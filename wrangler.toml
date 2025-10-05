@@ -1,0 +1,46 @@
+#:schema node_modules/@deco/workers-runtime/config-schema.json
+name = "webdraw-legacy"
+main = "server/main.ts"
+compatibility_date = "2025-06-17"
+compatibility_flags = [ "nodejs_compat" ]
+scope = "lucis"
+
+[assets]
+directory = "./dist/client"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+[deco]
+workspace = "lucis"
+enable_workflows = true
+local = false
+
+[deco.integration]
+description = "Webdraw é um editor de desenho baseado no Excalidraw, com capacidades de IA para geração e análise de diagramas."
+friendlyName = "Webdraw - Crie com IA"
+icon = "https://pbs.twimg.com/profile_images/1872322231549788160/HK9hCYrk_400x400.jpg"
+
+[[deco.bindings]]
+name = "AI_GATEWAY"
+type = "mcp"
+integration_name = "@deco/ai-gateway"
+
+[[deco.bindings]]
+name = "DECONFIG"
+type = "mcp"
+integration_name = "@deco/deconfig"
+
+[[deco.bindings]]
+name = "DATABASE"
+type = "mcp"
+integration_name = "@deco/database"
+
+[[migrations]]
+tag = "v1"
+new_classes = [ "Workflow" ]
+
+[durable_objects]
+[[durable_objects.bindings]]
+name = "DECO_WORKFLOW_DO"
+class_name = "Workflow"

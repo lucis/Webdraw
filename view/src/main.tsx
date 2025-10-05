@@ -1,0 +1,63 @@
+import { StrictMode } from "react";
+import ReactDOM from "react-dom/client";
+import {
+  createRootRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router";
+import HomePage from "./routes/home.tsx";
+import AboutPage from "./routes/about.tsx";
+import AppPage from "./routes/app.tsx";
+import CanvasPage from "./routes/canvas.tsx";
+import DebugToolsPage from "./routes/debug-tools.tsx";
+import ExcalidrawTestPage from "./routes/excalidraw.tsx";
+import { Toaster } from "sonner";
+
+import "./styles.css";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+const rootRoute = createRootRoute({
+  component: () => <Outlet />,
+});
+
+const routeTree = rootRoute.addChildren([
+  HomePage(rootRoute),
+  AboutPage(rootRoute),
+  AppPage(rootRoute),
+  CanvasPage(rootRoute),
+  DebugToolsPage(rootRoute),
+  ExcalidrawTestPage(rootRoute),
+]);
+
+const queryClient = new QueryClient();
+
+const router = createRouter({
+  routeTree,
+  context: {
+    queryClient,
+  },
+  defaultPreload: "intent",
+  scrollRestoration: true,
+  defaultStructuralSharing: true,
+  defaultPreloadStaleTime: 0,
+});
+
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+}
+
+const rootElement = document.getElementById("root");
+if (rootElement && !rootElement.innerHTML) {
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+        <Toaster />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+}

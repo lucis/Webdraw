@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "webdraw": {
+      "type": "http",
+      "url": "https://localhost-bc026796.deco.host/mcp"
+    }
+  }
+}
