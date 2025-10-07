@@ -223,7 +223,7 @@ export const createCreateDrawingTool = (env: Env) =>
       };
 
       // Salvar dados do desenho
-      await env.DECONFIG.PUT_FILE({
+      const drawingDataResponse = await env.DECONFIG.PUT_FILE({
         branch,
         path: getDrawingDataPath(drawingId),
         content: JSON.stringify({
@@ -239,6 +239,8 @@ export const createCreateDrawingTool = (env: Env) =>
         },
       });
 
+      console.log("🎨 CREATE_DRAWING - Drawing data file response:", JSON.stringify(drawingDataResponse, null, 2));
+
       // Salvar metadados
       const metadata: DrawingMetadata = {
         id: drawing.id,
@@ -253,7 +255,7 @@ export const createCreateDrawingTool = (env: Env) =>
         elementCount: (drawing.elements || []).length,
       };
 
-      await env.DECONFIG.PUT_FILE({
+      const metadataResponse = await env.DECONFIG.PUT_FILE({
         branch,
         path: getDrawingMetaPath(drawingId),
         content: JSON.stringify(metadata, null, 2),
@@ -266,9 +268,12 @@ export const createCreateDrawingTool = (env: Env) =>
         },
       });
 
+      console.log("📋 CREATE_DRAWING - Metadata file response:", JSON.stringify(metadataResponse, null, 2));
+
       // Adicionar ao folder se especificado
       if (folderId) {
         await addDrawingToFolder(env, branch, folderId, drawingId);
+        console.log("📁 CREATE_DRAWING - Added drawing to folder:", folderId);
       }
 
       return { drawing };
@@ -378,36 +383,62 @@ export const createListDrawingsTool = (env: Env) =>
         branch,
       });
 
+      console.log("📂 LIST_DRAWINGS - Raw files response:", { files });
       const drawings: DrawingMetadata[] = [];
 
-      const fileList = Array.isArray(files.files) ? files.files : [];
-      for (const file of fileList) {
-        if (file.path.startsWith(getPath(STORAGE_CONSTANTS.DRAWINGS_DIR)) && 
-            file.path.endsWith(STORAGE_CONSTANTS.META_SUFFIX)) {
+      // files.files é um objeto onde as chaves são os paths
+      const filePaths = Object.keys(files.files || {});
+      console.log("📂 LIST_DRAWINGS - Total file paths found:", filePaths.length);
+      console.log("📂 LIST_DRAWINGS - All file paths:", filePaths);
+
+      const drawingsDir = "/" + getPath(STORAGE_CONSTANTS.DRAWINGS_DIR); // Adicionar barra inicial
+      const metaSuffix = STORAGE_CONSTANTS.META_SUFFIX;
+      console.log("📂 LIST_DRAWINGS - Looking for files starting with:", drawingsDir);
+      console.log("📂 LIST_DRAWINGS - Looking for files ending with:", metaSuffix);
+
+      for (const filePath of filePaths) {
+        console.log("📂 LIST_DRAWINGS - Checking file:", filePath);
+        
+        const startsWithDir = filePath.startsWith(drawingsDir);
+        const endsWithMeta = filePath.endsWith(metaSuffix);
+        console.log(`📂 LIST_DRAWINGS - ${filePath} -> starts: ${startsWithDir}, ends: ${endsWithMeta}`);
+        
+        if (startsWithDir && endsWithMeta) {
+          console.log("✅ LIST_DRAWINGS - File matches criteria, reading:", filePath);
           try {
             const result = await env.DECONFIG.READ_FILE({
               branch,
-              path: file.path,
+              path: filePath,
               format: "plainString",
             });
+            console.log("📄 LIST_DRAWINGS - File read successful:", filePath);
             const metadata: DrawingMetadata = JSON.parse(result.content as string);
+            console.log("📄 LIST_DRAWINGS - Metadata parsed:", { id: metadata.id, folderId: metadata.folderId, archived: metadata.archived });
 
             // Filtrar por folder se especificado
             if (folderId !== undefined && metadata.folderId !== folderId) {
+              console.log(`🚫 LIST_DRAWINGS - Skipping ${metadata.id}: folderId mismatch (expected: ${folderId}, got: ${metadata.folderId})`);
               continue;
             }
 
             // Filtrar arquivados se necessário
             if (!includeArchived && metadata.archived) {
+              console.log(`🚫 LIST_DRAWINGS - Skipping ${metadata.id}: archived and includeArchived is false`);
               continue;
             }
 
+            console.log("✅ LIST_DRAWINGS - Adding drawing:", metadata.id);
             drawings.push(metadata);
           } catch (error) {
-            console.error(`Erro ao carregar ${file.path}:`, error);
+            console.error(`❌ LIST_DRAWINGS - Erro ao carregar ${filePath}:`, error);
           }
+        } else {
+          console.log("🚫 LIST_DRAWINGS - File does not match criteria:", filePath);
         }
       }
+
+      console.log("📂 LIST_DRAWINGS - Final drawings count:", drawings.length);
+      console.log("📂 LIST_DRAWINGS - Final drawings:", drawings.map(d => ({ id: d.id, name: d.name })));
 
       // Ordenar por data de atualização (mais recente primeiro)
       drawings.sort((a, b) => b.updatedAt - a.updatedAt);
