@@ -455,21 +455,39 @@ export const useDrawingStore = create<DrawingStoreState>()(
         ) => {
           const { currentDrawing, branch } = get();
           
+          console.log('💾 saveCurrentDrawing iniciado:', {
+            hasDrawing: !!currentDrawing,
+            drawingId: currentDrawing?.id,
+            elementCount: elements.length,
+            branch
+          });
+          
           if (!currentDrawing) {
+            console.error('❌ Nenhum drawing aberto para salvar');
             throw new Error("Nenhum drawing aberto");
           }
           
           // Criar hash dos dados para comparação
           const currentHash = JSON.stringify({ elements, appState });
+          const lastHash = get().lastSaveHash;
+          
+          console.log('🔍 Verificando se dados mudaram:', {
+            currentHash: currentHash.substring(0, 50) + '...',
+            lastHash: lastHash ? lastHash.substring(0, 50) + '...' : null,
+            mudou: currentHash !== lastHash
+          });
           
           // Se dados não mudaram, não salvar
-          if (currentHash === get().lastSaveHash) {
+          if (currentHash === lastHash) {
+            console.log('⏭️ Dados não mudaram, pulando save');
             return;
           }
           
+          console.log('💾 Iniciando save - dados mudaram');
           set({ syncStatus: "saving" });
           
           try {
+            console.log('🌐 Chamando UPDATE_DRAWING via RPC...');
             await client.UPDATE_DRAWING({
               drawingId: currentDrawing.id,
               elements,
@@ -478,13 +496,36 @@ export const useDrawingStore = create<DrawingStoreState>()(
               branch,
             });
             
+            console.log('✅ UPDATE_DRAWING bem-sucedido');
+            
+            // Atualizar drawing atual com novos elementos
+            const updatedDrawing = {
+              ...currentDrawing,
+              elements,
+              appState,
+              files,
+              updatedAt: Date.now(),
+            };
+            
+            // Atualizar na lista de drawings com elementCount
+            const updatedDrawings = get().drawings.map(d => 
+              d.id === currentDrawing.id 
+                ? { ...d, elementCount: elements.length, updatedAt: Date.now() }
+                : d
+            );
+            
+            console.log('🔄 Atualizando estado local:', {
+              elementCount: elements.length,
+              drawingsUpdated: updatedDrawings.length
+            });
+            
             set({
               syncStatus: "idle",
               lastSaveHash: currentHash,
+              currentDrawing: updatedDrawing,
+              drawings: updatedDrawings,
             });
             
-            // Recarregar lista de drawings para atualizar metadados
-            await get().loadDrawings();
           } catch (error) {
             set({
               error: `Erro ao salvar drawing: ${error}`,
@@ -624,18 +665,28 @@ export const useDrawingStore = create<DrawingStoreState>()(
           appState: Record<string, any>,
           files: Record<string, any>
         ) => {
+          console.log('💾 scheduleAutoSave recebido:', {
+            elementCount: elements.length,
+            hasCurrentDrawing: !!get().currentDrawing,
+            currentDrawingId: get().currentDrawing?.id
+          });
+          
           // Cancelar timeout anterior
           const timeout = get().autoSaveTimeout;
           if (timeout) {
+            console.log('⏰ Cancelando timeout anterior');
             clearTimeout(timeout);
           }
           
           // Agendar novo save
+          console.log('⏰ Agendando save em 2s...');
           const newTimeout = setTimeout(async () => {
             try {
+              console.log('💾 Executando auto-save agendado...');
               await get().saveCurrentDrawing(elements, appState, files);
+              console.log('✅ Auto-save concluído');
             } catch (error) {
-              console.error("Auto-save falhou:", error);
+              console.error("❌ Auto-save falhou:", error);
             }
           }, 2000); // 2 segundos de debounce
           

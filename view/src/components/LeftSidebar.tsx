@@ -1,132 +1,84 @@
 /**
- * Left Sidebar - Container principal
+ * Left Sidebar - Nova versão minimalista e funcional
  * 
- * Contém:
- * - Header com branch selector e botão collapse
- * - Lista de Folders
- * - Separador
- * - Lista de Drawings
+ * Layout com 3 seções principais:
+ * - Folders Navigation (navegação entre pastas)
+ * - Drawings Navigation (desenhos da pasta atual)  
+ * - Resources Section (cards draggable para canvas)
  */
 
-import { useState } from "react";
-import { ChevronLeft, ChevronRight, GitBranch } from "lucide-react";
-import { Button } from "./ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { FolderList } from "./folders/FolderList";
-import { DrawingList } from "./drawings/DrawingList";
+import { GitBranch } from "lucide-react";
+import { FolderNavigation } from "./folders/FolderNavigation";
+import { DrawingNavigation } from "./drawings/DrawingNavigation";
+import { ResourcesSection } from "./resources/ResourcesSection";
 import { useBranch } from "../hooks/useDrawingManagement";
+import { cn } from "../lib/utils";
 
-export const LeftSidebar = () => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const { branch, switchBranch } = useBranch();
-  const [branchPopoverOpen, setBranchPopoverOpen] = useState(false);
-  
-  // Branches disponíveis (por enquanto apenas main)
-  const availableBranches = ["main"];
-  
-  if (isCollapsed) {
-    return (
-      <div className="w-12 bg-slate-900 border-r border-slate-700 flex flex-col items-center py-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 w-8 p-0"
-          onClick={() => setIsCollapsed(false)}
-          title="Expandir sidebar"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </Button>
-      </div>
-    );
-  }
+interface LeftSidebarProps {
+  isOpen: boolean;
+}
+
+export const LeftSidebar = ({ isOpen }: LeftSidebarProps) => {
+  const { branch } = useBranch();
   
   return (
-    <div className="w-80 bg-slate-900 border-r border-slate-700 flex flex-col">
-      {/* Header */}
-      <div className="flex-shrink-0 p-4 border-b border-slate-700">
-        <div className="flex items-center justify-between mb-3">
-          {/* Logo/Title */}
-          <div className="flex items-center gap-2">
-            <img
-              src="/logo.png"
-              alt="Webdraw"
-              className="w-6 h-6 object-contain"
-            />
-            <h1 className="text-lg font-bold text-white">Webdraw</h1>
-          </div>
-          
-          {/* Collapse button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0"
-            onClick={() => setIsCollapsed(true)}
-            title="Recolher sidebar"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
+    <div 
+      className={cn(
+        // Base styling
+        "fixed left-0 top-0 h-screen w-80 bg-slate-900 border-r border-slate-700",
+        "flex flex-col z-40 shadow-xl overflow-hidden",
+        // Animation
+        "transition-transform duration-300 ease-in-out",
+        // States
+        isOpen ? "translate-x-0" : "-translate-x-full",
+      )}
+    >
+      {/* Header - Fixed height */}
+      <div className="flex-shrink-0 h-24 p-4 border-b border-slate-700">
+        <div className="flex items-center gap-2 mb-3">
+          <img
+            src="/logo.png"
+            alt="Webdraw"
+            className="w-6 h-6 object-contain"
+          />
+          <h1 className="text-lg font-bold text-white">Webdraw</h1>
         </div>
         
-        {/* Branch Selector */}
-        <Popover open={branchPopoverOpen} onOpenChange={setBranchPopoverOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full justify-start gap-2 h-8 text-xs font-mono"
-            >
-              <GitBranch className="w-3 h-3" />
-              <span className="flex-1 text-left">{branch}</span>
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-64 p-2 bg-slate-800 border-slate-700">
-            <div className="space-y-1">
-              <div className="px-2 py-1.5 text-xs font-semibold text-slate-400">
-                Branches
-              </div>
-              {availableBranches.map((b) => (
-                <button
-                  key={b}
-                  onClick={() => {
-                    if (b !== branch) {
-                      switchBranch(b);
-                    }
-                    setBranchPopoverOpen(false);
-                  }}
-                  className={`w-full text-left px-2 py-1.5 rounded text-sm font-mono transition-colors ${
-                    b === branch
-                      ? "bg-blue-600 text-white"
-                      : "text-slate-300 hover:bg-slate-700"
-                  }`}
-                >
-                  {b}
-                </button>
-              ))}
-            </div>
-          </PopoverContent>
-        </Popover>
-      </div>
-      
-      {/* Folders Section */}
-      <div className="flex-shrink-0 border-b border-slate-700 py-2">
-        <FolderList />
-      </div>
-      
-      {/* Drawings Section */}
-      <div className="flex-1 overflow-hidden flex flex-col py-2">
-        <DrawingList />
-      </div>
-      
-      {/* Footer (opcional) */}
-      <div className="flex-shrink-0 p-2 border-t border-slate-700">
-        <div className="text-xs text-slate-500 text-center">
-          <a
-            href="/debug-tools"
-            className="hover:text-slate-400 transition-colors"
-          >
-            Debug Tools
-          </a>
+        {/* Branch Selector - Simplified */}
+        <div className="flex items-center gap-2 px-2 py-1 bg-slate-800 rounded text-xs font-mono text-slate-300">
+          <GitBranch className="w-3 h-3" />
+          <span>{branch}</span>
         </div>
+      </div>
+      
+      {/* Scrollable Content */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        
+        {/* Folders Section - Fixed height */}
+        <div className="flex-shrink-0 max-h-32 border-b border-slate-700 overflow-y-auto">
+          <FolderNavigation />
+        </div>
+        
+        {/* Drawings Section - Flexible with scroll */}
+        <div className="flex-1 flex flex-col min-h-0 border-b border-slate-700">
+          <DrawingNavigation />
+        </div>
+        
+        {/* Resources Section - Fixed height */}
+        <div className="flex-shrink-0 max-h-40 overflow-y-auto">
+          <ResourcesSection />
+        </div>
+        
+      </div>
+      
+      {/* Footer - Fixed height */}
+      <div className="flex-shrink-0 h-12 p-3 border-t border-slate-700 flex items-center justify-center">
+        <a
+          href="/debug-tools"
+          className="text-xs text-slate-500 hover:text-slate-400 transition-colors"
+        >
+          Debug Tools
+        </a>
       </div>
     </div>
   );

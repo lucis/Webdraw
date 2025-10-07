@@ -7,17 +7,42 @@
 import { Excalidraw } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import { useCallback, useEffect, useRef } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useCurrentDrawing, useAutoSave } from "../../hooks/useDrawingManagement";
 
 export const ExcalidrawCanvas = () => {
-  const { currentDrawing, isLoading } = useCurrentDrawing();
-  const { scheduleAutoSave, syncStatus } = useAutoSave();
+  const { currentDrawing, isLoading, syncStatus } = useCurrentDrawing();
+  const { scheduleAutoSave } = useAutoSave();
+  const navigate = useNavigate();
   const apiRef = useRef<any>(null);
   const isInitialLoadRef = useRef(true);
   
+  // Atualizar URL quando desenho carregar
+  useEffect(() => {
+    if (currentDrawing?.id) {
+      console.log('🔗 Atualizando URL para desenho:', currentDrawing.name, currentDrawing.id);
+      navigate({ 
+        to: "/app", 
+        search: { drawingId: currentDrawing.id },
+        replace: true 
+      });
+    }
+  }, [currentDrawing?.id, navigate]);
+  
   // Callback quando API do Excalidraw monta
   const onExcalidrawAPIMount = useCallback((api: any) => {
+    console.log('🎯 Excalidraw API montada:', !!api);
     apiRef.current = api;
+    
+    // Debug: verificar se API tem métodos esperados
+    if (api) {
+      console.log('🔍 API methods available:', {
+        getSceneElements: typeof api.getSceneElements,
+        getAppState: typeof api.getAppState,
+        getFiles: typeof api.getFiles,
+        updateScene: typeof api.updateScene
+      });
+    }
   }, []);
   
   // Carregar drawing no canvas quando mudar
@@ -46,14 +71,46 @@ export const ExcalidrawCanvas = () => {
   
   // Handler de mudanças (auto-save)
   const handleChange = useCallback(() => {
-    if (!apiRef.current || !currentDrawing || isInitialLoadRef.current) return;
+    console.log('🔥 handleChange chamado:', {
+      hasAPI: !!apiRef.current,
+      hasDrawing: !!currentDrawing,
+      isInitialLoad: isInitialLoadRef.current,
+      drawingId: currentDrawing?.id
+    });
+    
+    if (!apiRef.current) {
+      console.log('❌ Sem API ref');
+      return;
+    }
+    
+    if (!currentDrawing) {
+      console.log('❌ Sem currentDrawing');
+      return;
+    }
+    
+    if (isInitialLoadRef.current) {
+      console.log('❌ Ainda carregando inicial, ignorando...');
+      return;
+    }
     
     const elements = apiRef.current.getSceneElements();
     const appState = apiRef.current.getAppState();
     const files = apiRef.current.getFiles();
     
-    // Agendar auto-save com debounce
-    scheduleAutoSave(elements, appState, files);
+    console.log('🎨 Canvas mudou - dados válidos:', {
+      drawingId: currentDrawing.id,
+      elementCount: elements.length,
+      hasFiles: Object.keys(files).length > 0,
+      scheduleAutoSaveExists: typeof scheduleAutoSave === 'function'
+    });
+    
+    // Agendar auto-save com debounce via store Zustand
+    if (typeof scheduleAutoSave === 'function') {
+      console.log('📝 Chamando scheduleAutoSave...');
+      scheduleAutoSave(elements, appState, files);
+    } else {
+      console.error('❌ scheduleAutoSave não é uma função:', typeof scheduleAutoSave);
+    }
   }, [currentDrawing, scheduleAutoSave]);
   
   // Empty state quando não há drawing
@@ -94,36 +151,59 @@ export const ExcalidrawCanvas = () => {
     );
   }
   
+  // Função de teste manual
+  const testarConexao = useCallback(() => {
+    console.log('🧪 TESTE MANUAL DE CONEXÃO');
+    console.log('API ref:', !!apiRef.current);
+    console.log('Current drawing:', !!currentDrawing);
+    console.log('scheduleAutoSave:', typeof scheduleAutoSave);
+    
+    if (apiRef.current && currentDrawing) {
+      console.log('🧪 Testando manualmente...');
+      const elements = apiRef.current.getSceneElements();
+      const appState = apiRef.current.getAppState();
+      const files = apiRef.current.getFiles();
+      
+      console.log('🧪 Dados obtidos:', {
+        elementCount: elements?.length,
+        hasAppState: !!appState,
+        hasFiles: !!files
+      });
+      
+      if (typeof scheduleAutoSave === 'function') {
+        console.log('🧪 Chamando scheduleAutoSave manualmente...');
+        scheduleAutoSave(elements || [], appState || {}, files || {});
+      }
+    }
+  }, [currentDrawing, scheduleAutoSave]);
+  
   return (
     <div className="h-full w-full relative">
-      {/* Indicador de sync */}
-      {syncStatus === "saving" && (
-        <div className="absolute top-4 right-4 z-50 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2">
-          <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-              fill="none"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
-          </svg>
-          Salvando...
-        </div>
-      )}
+      {/* Debug controls */}
+      <div className="absolute top-4 left-4 z-50 space-y-2">
+        <button
+          onClick={testarConexao}
+          className="px-3 py-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded text-sm font-mono"
+        >
+          🧪 Testar Conexão
+        </button>
+      </div>
       
-      {syncStatus === "error" && (
-        <div className="absolute top-4 right-4 z-50 bg-red-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
-          Erro ao salvar
-        </div>
-      )}
+      {/* Indicador de sync simples */}
+      <div className="absolute top-4 right-4 z-50">
+        {syncStatus === "saving" && (
+          <div className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded-full text-sm shadow-lg">
+            <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+            Salvando...
+          </div>
+        )}
+        {syncStatus === "error" && (
+          <div className="flex items-center gap-2 px-3 py-1 bg-red-600 text-white rounded-full text-sm shadow-lg">
+            <div className="w-2 h-2 bg-white rounded-full"></div>
+            Erro
+          </div>
+        )}
+      </div>
       
       {/* Canvas Excalidraw */}
       <Excalidraw

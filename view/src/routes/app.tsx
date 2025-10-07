@@ -2,20 +2,24 @@
  * Rota principal do aplicativo (/app)
  * 
  * Página principal do Webdraw com:
- * - Left Sidebar (folders + drawings)
- * - Canvas do Excalidraw
+ * - Sidebar escondível com toggle externo
+ * - Canvas do Excalidraw (fullscreen)
  * - Header com user button
  */
 
 import { createRoute, type RootRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { LeftSidebar } from "../components/LeftSidebar";
+import { SidebarToggle } from "../components/SidebarToggle";
 import { ExcalidrawCanvas } from "../components/canvas/ExcalidrawCanvas";
 import { UserButton } from "../components/user-button";
-import { useInitializeDrawingStore } from "../hooks/useDrawingManagement";
+import { useInitializeDrawingStore, useAutoSave } from "../hooks/useDrawingManagement";
 import LoggedProvider from "../components/logged-provider";
 
 function AppPage() {
   const { isInitialized } = useInitializeDrawingStore();
+  const { isSaving, syncStatus } = useAutoSave();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   
   if (!isInitialized) {
     return (
@@ -28,10 +32,23 @@ function AppPage() {
     );
   }
   
+  const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
+  
   return (
-    <div className="h-screen w-screen flex flex-col bg-slate-900">
+    <div className="h-screen w-screen flex flex-col bg-slate-900 relative overflow-hidden">
+      {/* Sidebar Toggle - Fixo no viewport */}
+      <SidebarToggle 
+        isOpen={sidebarOpen}
+        onToggle={toggleSidebar}
+      />
+      
+      {/* Sidebar - Fixed overlay */}
+      <LeftSidebar 
+        isOpen={sidebarOpen}
+      />
+      
       {/* Header */}
-      <header className="flex-shrink-0 h-14 border-b border-slate-700 flex items-center justify-between px-4 bg-slate-900">
+      <header className="flex-shrink-0 h-14 border-b border-slate-700 flex items-center justify-between px-4 bg-slate-900 relative z-30">
         <div className="flex items-center gap-3">
           <img
             src="/logo.png"
@@ -41,18 +58,39 @@ function AppPage() {
           <h1 className="text-lg font-bold text-white">Webdraw</h1>
         </div>
         
-        <UserButton />
+        <div className="flex items-center gap-4">
+          {/* Status de sincronização */}
+          {isSaving && (
+            <div className="flex items-center gap-2 px-2 py-1 bg-blue-600 text-white rounded text-sm">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              Salvando...
+            </div>
+          )}
+          {syncStatus === "error" && (
+            <div className="flex items-center gap-2 px-2 py-1 bg-red-600 text-white rounded text-sm">
+              <div className="w-2 h-2 bg-white rounded-full"></div>
+              Erro
+            </div>
+          )}
+          
+          <UserButton />
+        </div>
       </header>
       
-      {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar */}
-        <LeftSidebar />
-        
-        {/* Canvas */}
-        <main className="flex-1 overflow-hidden">
+      {/* Main Content - Full screen canvas */}
+      <div className="flex-1 overflow-hidden relative">
+        {/* Canvas ocupa toda a tela */}
+        <main className="absolute inset-0">
           <ExcalidrawCanvas />
         </main>
+        
+        {/* Overlay quando sidebar está aberta (mobile) */}
+        {sidebarOpen && (
+          <div 
+            className="absolute inset-0 bg-black/20 z-30 md:hidden overlay-enter"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
       </div>
     </div>
   );
@@ -72,4 +110,7 @@ export default (parentRoute: RootRoute) =>
     path: "/app",
     component: AppPageWithAuth,
     getParentRoute: () => parentRoute,
+    validateSearch: (search: Record<string, unknown>) => ({
+      drawingId: search.drawingId as string | undefined,
+    }),
   });
