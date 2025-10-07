@@ -422,3 +422,4 @@ interface DrawingStore {
 
 **Próximos passos:** Testar tools → Criar store → Criar componentes → Integrar tudo
 
+

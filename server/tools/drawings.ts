@@ -10,7 +10,7 @@
 
 import { createTool } from "@deco/workers-runtime/mastra";
 import { z } from "zod";
-import type { Env } from "../deco.gen.ts";
+import type { Env } from "../main.ts";
 
 /**
  * Constantes de configuração
@@ -213,9 +213,9 @@ export const createCreateDrawingTool = (env: Env) =>
         description,
         branch,
         folderId,
-        elements,
-        appState,
-        files,
+        elements: elements || [], // Garantir que elements seja sempre um array
+        appState: appState || {}, // Garantir que appState seja sempre um objeto
+        files: files || {}, // Garantir que files seja sempre um objeto
         createdAt: now,
         updatedAt: now,
         version: 1,
@@ -250,7 +250,7 @@ export const createCreateDrawingTool = (env: Env) =>
         updatedAt: drawing.updatedAt,
         version: drawing.version,
         archived: drawing.archived,
-        elementCount: drawing.elements.length,
+        elementCount: (drawing.elements || []).length,
       };
 
       await env.DECONFIG.PUT_FILE({
@@ -376,13 +376,14 @@ export const createListDrawingsTool = (env: Env) =>
       // Listar todos os arquivos .meta.json
       const files = await env.DECONFIG.LIST_FILES({
         branch,
-        path: getPath(STORAGE_CONSTANTS.DRAWINGS_DIR),
       });
 
       const drawings: DrawingMetadata[] = [];
 
-      for (const file of files.files) {
-        if (file.path.endsWith(STORAGE_CONSTANTS.META_SUFFIX)) {
+      const fileList = Array.isArray(files.files) ? files.files : [];
+      for (const file of fileList) {
+        if (file.path.startsWith(getPath(STORAGE_CONSTANTS.DRAWINGS_DIR)) && 
+            file.path.endsWith(STORAGE_CONSTANTS.META_SUFFIX)) {
           try {
             const result = await env.DECONFIG.READ_FILE({
               branch,
@@ -455,23 +456,45 @@ export const createUpdateDrawingTool = (env: Env) =>
         context;
 
       // Carregar desenho existente
-      const existing = await env.SELF.GET_DRAWING({ drawingId, branch });
+      let existingDrawing: Drawing;
+      try {
+        // Carregar metadados
+        const metaResult = await env.DECONFIG.READ_FILE({
+          branch,
+          path: getDrawingMetaPath(drawingId),
+          format: "plainString",
+        });
+        const metadata: DrawingMetadata = JSON.parse(metaResult.content as string);
 
-      if (!existing.drawing) {
+        // Carregar dados
+        const dataResult = await env.DECONFIG.READ_FILE({
+          branch,
+          path: getDrawingDataPath(drawingId),
+          format: "plainString",
+        });
+        const data = JSON.parse(dataResult.content as string);
+
+        existingDrawing = {
+          ...metadata,
+          elements: data.elements || [],
+          appState: data.appState || {},
+          files: data.files || {},
+        };
+      } catch {
         throw new Error(`Desenho não encontrado: ${drawingId}`);
       }
 
       // Atualizar campos
       const updated: Drawing = {
-        ...existing.drawing,
-        name: name ?? existing.drawing.name,
-        description: description !== undefined ? description : existing.drawing.description,
-        elements: elements ?? existing.drawing.elements,
-        appState: appState ?? existing.drawing.appState,
-        files: files ?? existing.drawing.files,
-        archived: archived !== undefined ? archived : existing.drawing.archived,
+        ...existingDrawing,
+        name: name ?? existingDrawing.name,
+        description: description !== undefined ? description : existingDrawing.description,
+        elements: elements ?? existingDrawing.elements,
+        appState: appState ?? existingDrawing.appState,
+        files: files ?? existingDrawing.files,
+        archived: archived !== undefined ? archived : existingDrawing.archived,
         updatedAt: Date.now(),
-        version: existing.drawing.version + 1,
+        version: existingDrawing.version + 1,
       };
 
       // Salvar dados atualizados
@@ -502,7 +525,7 @@ export const createUpdateDrawingTool = (env: Env) =>
         updatedAt: updated.updatedAt,
         version: updated.version,
         archived: updated.archived,
-        elementCount: updated.elements.length,
+        elementCount: (updated.elements || []).length,
       };
 
       await env.DECONFIG.PUT_FILE({
@@ -543,15 +566,37 @@ export const createDeleteDrawingTool = (env: Env) =>
       const { drawingId, branch } = context;
 
       // Carregar desenho para obter folderId
-      const existing = await env.SELF.GET_DRAWING({ drawingId, branch });
+      let existingDrawing: Drawing;
+      try {
+        // Carregar metadados
+        const metaResult = await env.DECONFIG.READ_FILE({
+          branch,
+          path: getDrawingMetaPath(drawingId),
+          format: "plainString",
+        });
+        const metadata: DrawingMetadata = JSON.parse(metaResult.content as string);
 
-      if (!existing.drawing) {
+        // Carregar dados
+        const dataResult = await env.DECONFIG.READ_FILE({
+          branch,
+          path: getDrawingDataPath(drawingId),
+          format: "plainString",
+        });
+        const data = JSON.parse(dataResult.content as string);
+
+        existingDrawing = {
+          ...metadata,
+          elements: data.elements || [],
+          appState: data.appState || {},
+          files: data.files || {},
+        };
+      } catch {
         throw new Error(`Desenho não encontrado: ${drawingId}`);
       }
 
       // Remover do folder se estiver em um
-      if (existing.drawing.folderId) {
-        await removeDrawingFromFolder(env, branch, existing.drawing.folderId, drawingId);
+      if (existingDrawing.folderId) {
+        await removeDrawingFromFolder(env, branch, existingDrawing.folderId, drawingId);
       }
 
       // Deletar arquivos
@@ -607,13 +652,35 @@ export const createMoveDrawingToFolderTool = (env: Env) =>
       const { drawingId, targetFolderId, branch } = context;
 
       // Carregar desenho
-      const existing = await env.SELF.GET_DRAWING({ drawingId, branch });
+      let existingDrawing: Drawing;
+      try {
+        // Carregar metadados
+        const metaResult = await env.DECONFIG.READ_FILE({
+          branch,
+          path: getDrawingMetaPath(drawingId),
+          format: "plainString",
+        });
+        const metadata: DrawingMetadata = JSON.parse(metaResult.content as string);
 
-      if (!existing.drawing) {
+        // Carregar dados
+        const dataResult = await env.DECONFIG.READ_FILE({
+          branch,
+          path: getDrawingDataPath(drawingId),
+          format: "plainString",
+        });
+        const data = JSON.parse(dataResult.content as string);
+
+        existingDrawing = {
+          ...metadata,
+          elements: data.elements || [],
+          appState: data.appState || {},
+          files: data.files || {},
+        };
+      } catch {
         throw new Error(`Desenho não encontrado: ${drawingId}`);
       }
 
-      const oldFolderId = existing.drawing.folderId;
+      const oldFolderId = existingDrawing.folderId;
 
       // Remover do folder antigo
       if (oldFolderId) {
@@ -625,30 +692,24 @@ export const createMoveDrawingToFolderTool = (env: Env) =>
         await addDrawingToFolder(env, branch, targetFolderId, drawingId);
       }
 
-      // Atualizar metadados do desenho
-      const updated = await env.SELF.UPDATE_DRAWING({
-        drawingId,
-        branch,
-      });
-
       // Atualizar folderId nos metadados
-      const metadata: DrawingMetadata = {
+      const updatedMetadata: DrawingMetadata = {
         id: drawingId,
-        name: updated.drawing.name,
-        description: updated.drawing.description,
-        branch: updated.drawing.branch,
+        name: existingDrawing.name,
+        description: existingDrawing.description,
+        branch: existingDrawing.branch,
         folderId: targetFolderId,
-        createdAt: updated.drawing.createdAt,
+        createdAt: existingDrawing.createdAt,
         updatedAt: Date.now(),
-        version: updated.drawing.version,
-        archived: updated.drawing.archived,
-        elementCount: updated.drawing.elements.length,
+        version: existingDrawing.version,
+        archived: existingDrawing.archived,
+        elementCount: (existingDrawing.elements || []).length,
       };
 
       await env.DECONFIG.PUT_FILE({
         branch,
         path: getDrawingMetaPath(drawingId),
-        content: JSON.stringify(metadata, null, 2),
+        content: JSON.stringify(updatedMetadata, null, 2),
         metadata: {
           app: "webdraw",
           type: "drawing-metadata",
@@ -661,7 +722,7 @@ export const createMoveDrawingToFolderTool = (env: Env) =>
       return {
         success: true,
         drawing: {
-          ...updated.drawing,
+          ...existingDrawing,
           folderId: targetFolderId,
         },
       };
@@ -702,26 +763,107 @@ export const createDuplicateDrawingTool = (env: Env) =>
       const { drawingId, newName, branch } = context;
 
       // Carregar desenho original
-      const original = await env.SELF.GET_DRAWING({ drawingId, branch });
+      let originalDrawing: Drawing;
+      try {
+        // Carregar metadados
+        const metaResult = await env.DECONFIG.READ_FILE({
+          branch,
+          path: getDrawingMetaPath(drawingId),
+          format: "plainString",
+        });
+        const metadata: DrawingMetadata = JSON.parse(metaResult.content as string);
 
-      if (!original.drawing) {
+        // Carregar dados
+        const dataResult = await env.DECONFIG.READ_FILE({
+          branch,
+          path: getDrawingDataPath(drawingId),
+          format: "plainString",
+        });
+        const data = JSON.parse(dataResult.content as string);
+
+        originalDrawing = {
+          ...metadata,
+          elements: data.elements || [],
+          appState: data.appState || {},
+          files: data.files || {},
+        };
+      } catch {
         throw new Error(`Desenho não encontrado: ${drawingId}`);
       }
 
       // Criar cópia com novo nome
-      const copyName = newName || `${original.drawing.name} (cópia)`;
+      const copyName = newName || `${originalDrawing.name} (cópia)`;
 
-      const duplicate = await env.SELF.CREATE_DRAWING({
+      // Gerar ID único para a cópia
+      const duplicateDrawingId = `drawing_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      // Criar drawing duplicado
+      const now = Date.now();
+      const duplicateDrawing: Drawing = {
+        id: duplicateDrawingId,
         name: copyName,
-        description: original.drawing.description,
-        folderId: original.drawing.folderId,
+        description: originalDrawing.description,
         branch,
-        elements: original.drawing.elements,
-        appState: original.drawing.appState,
-        files: original.drawing.files,
+        folderId: originalDrawing.folderId,
+        elements: originalDrawing.elements || [], 
+        appState: originalDrawing.appState || {}, 
+        files: originalDrawing.files || {}, 
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+        archived: false,
+      };
+
+      // Salvar dados do desenho duplicado
+      await env.DECONFIG.PUT_FILE({
+        branch,
+        path: getDrawingDataPath(duplicateDrawingId),
+        content: JSON.stringify({
+          elements: duplicateDrawing.elements,
+          appState: duplicateDrawing.appState,
+          files: duplicateDrawing.files,
+        }, null, 2),
+        metadata: {
+          app: "webdraw",
+          type: "drawing-data",
+          version: "1.0",
+          drawingId: duplicateDrawingId,
+        },
       });
 
-      return { drawing: duplicate.drawing };
+      // Salvar metadados
+      const duplicateMetadata: DrawingMetadata = {
+        id: duplicateDrawing.id,
+        name: duplicateDrawing.name,
+        description: duplicateDrawing.description,
+        branch: duplicateDrawing.branch,
+        folderId: duplicateDrawing.folderId,
+        createdAt: duplicateDrawing.createdAt,
+        updatedAt: duplicateDrawing.updatedAt,
+        version: duplicateDrawing.version,
+        archived: duplicateDrawing.archived,
+        elementCount: (duplicateDrawing.elements || []).length,
+      };
+
+      await env.DECONFIG.PUT_FILE({
+        branch,
+        path: getDrawingMetaPath(duplicateDrawingId),
+        content: JSON.stringify(duplicateMetadata, null, 2),
+        metadata: {
+          app: "webdraw",
+          type: "drawing-metadata",
+          version: "1.0",
+          drawingId: duplicateDrawingId,
+          folderId: duplicateDrawing.folderId || null,
+        },
+      });
+
+      // Adicionar ao folder se especificado
+      if (duplicateDrawing.folderId) {
+        await addDrawingToFolder(env, branch, duplicateDrawing.folderId, duplicateDrawingId);
+      }
+
+      return { drawing: duplicateDrawing };
     },
   });
 

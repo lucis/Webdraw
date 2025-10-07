@@ -36,6 +36,21 @@ name = "DATABASE"
 type = "mcp"
 integration_name = "@deco/database"
 
+[[deco.bindings]]
+name = "INTEGRATIONS"
+type = "mcp"
+integration_name = "@deco/integrations"
+
+[[deco.bindings]]
+name = "APIKEYS"
+type = "mcp"
+integration_name = "@deco/api-keys"
+
+[[deco.bindings]]
+name = "REGISTRY"
+type = "mcp"
+integration_name = "@deco/registry"
+
 [[migrations]]
 tag = "v1"
 new_classes = [ "Workflow" ]

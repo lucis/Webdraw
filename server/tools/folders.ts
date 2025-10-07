@@ -9,7 +9,7 @@
 
 import { createTool } from "@deco/workers-runtime/mastra";
 import { z } from "zod";
-import type { Env } from "../deco.gen.ts";
+import type { Env } from "../main.ts";
 
 /**
  * Constantes de configuração
@@ -303,7 +303,34 @@ export const createListFoldersTool = (env: Env) =>
       const { branch } = context;
       
       // Garantir que folder default existe
-      await env.SELF.ENSURE_DEFAULT_FOLDER({ branch });
+      const existingDefault = await loadFolder(env, branch, STORAGE_CONSTANTS.DEFAULT_FOLDER_ID);
+      
+      if (!existingDefault) {
+        // Criar folder default
+        const now = Date.now();
+        const defaultFolder: Folder = {
+          id: STORAGE_CONSTANTS.DEFAULT_FOLDER_ID,
+          name: "Meus Desenhos",
+          emoji: "📁",
+          branch,
+          drawingIds: [],
+          createdAt: now,
+          updatedAt: now,
+          order: 0,
+          isDefault: true,
+        };
+        
+        // Salvar folder
+        await saveFolder(env, defaultFolder);
+        
+        // Atualizar índice
+        const index = await loadFoldersIndex(env, branch);
+        if (!index.folderIds.includes(defaultFolder.id)) {
+          index.folderIds.push(defaultFolder.id);
+          index.lastUpdated = now;
+          await saveFoldersIndex(env, index);
+        }
+      }
       
       // Carregar índice
       const index = await loadFoldersIndex(env, branch);

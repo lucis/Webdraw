@@ -51,6 +51,10 @@ const runtime = withRuntime<Env, typeof StateSchema>({
       Scopes.DECONFIG.MERGE_BRANCH,
       Scopes.DECONFIG.PUT_FILE,
       Scopes.DECONFIG.READ_FILE,
+      Scopes.REGISTRY.REGISTRY_LIST_APPS,
+      Scopes.REGISTRY.REGISTRY_LIST_PUBLISHED_APPS,
+      Scopes.REGISTRY.REGISTRY_LIST_SCOPES,
+      Scopes.REGISTRY.REGISTRY_PUBLISH_APP,
     ],
     /**
      * The state schema of your Application defines what
@@ -83,7 +87,7 @@ const runtime = withRuntime<Env, typeof StateSchema>({
     
     // Serve about.html at /about
     if (url.pathname === "/about") {
-      return env.ASSETS.fetch(new Request(new URL("/about.html", url.origin), req));
+      return env.ASSETS.fetch(new Request(new URL("/about.html", url.origin)));
     }
     
     return env.ASSETS.fetch(req);
