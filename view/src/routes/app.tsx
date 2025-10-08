@@ -13,12 +13,13 @@ import { LeftSidebar } from "../components/LeftSidebar";
 import { SidebarToggle } from "../components/SidebarToggle";
 import { ExcalidrawCanvas } from "../components/canvas/ExcalidrawCanvas";
 import { UserButton } from "../components/user-button";
-import { useInitializeDrawingStore, useAutoSave } from "../hooks/useDrawingManagement";
+import { useInitializeDrawingStore } from "../hooks/useDrawingManagement";
+import { useDrawingStore } from "../stores/drawing-store";
 import LoggedProvider from "../components/logged-provider";
 
 function AppPage() {
   const { isInitialized } = useInitializeDrawingStore();
-  const { isSaving, syncStatus } = useAutoSave();
+  const syncStatus = useDrawingStore((state) => state.syncStatus);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   
   if (!isInitialized) {
@@ -60,7 +61,7 @@ function AppPage() {
         
         <div className="flex items-center gap-4">
           {/* Status de sincronização */}
-          {isSaving && (
+          {syncStatus === "saving" && (
             <div className="flex items-center gap-2 px-2 py-1 bg-blue-600 text-white rounded text-sm">
               <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
               Salvando...

@@ -201,19 +201,6 @@ export const DrawingNavigation = () => {
       
       {/* Drawings list - Scrollable */}
       <div className="flex-1 overflow-y-auto px-3 min-h-0">
-        {/* Debug info temporário */}
-        <div className="text-xs text-slate-500 mb-2 p-2 bg-slate-800 rounded border-l-2 border-blue-500">
-          <div><strong>🔍 Debug Info:</strong></div>
-          <div>Pasta: {currentFolder?.name || 'Nenhuma'}</div>
-          <div>Drawings: {drawings.length}</div>
-          <div>Loading: {isLoading ? 'Sim' : 'Não'}</div>
-          <div>Desenho atual: {currentDrawing?.name || 'Nenhum'}</div>
-          {currentDrawing && (
-            <div>Elementos: {currentDrawing.elements?.length || 0}</div>
-          )}
-          {error && <div className="text-red-400">Error: {error}</div>}
-        </div>
-        
         {isLoading && drawings.length === 0 ? (
           <div className="py-4 text-center">
             <div className="text-sm text-slate-400">Carregando...</div>

@@ -1,26 +1,34 @@
 /**
  * Componente principal do canvas Excalidraw
  * 
- * Integrado com Zustand store para auto-save e sincronização
+ * Padrão simples:
+ * - onChange → debounce → save via RPC
+ * - Scene version tracking para evitar loops
+ * - API imperativa única
  */
 
 import { Excalidraw } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import { useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useCurrentDrawing, useAutoSave } from "../../hooks/useDrawingManagement";
+import { useDrawingStore } from "../../stores/drawing-store";
+import { client } from "../../lib/rpc";
 
 export const ExcalidrawCanvas = () => {
-  const { currentDrawing, isLoading, syncStatus } = useCurrentDrawing();
-  const { scheduleAutoSave } = useAutoSave();
+  // Estado do store
+  const currentDrawing = useDrawingStore((state) => state.currentDrawing);
+  const branch = useDrawingStore((state) => state.branch);
+  const syncStatus = useDrawingStore((state) => state.syncStatus);
+  
   const navigate = useNavigate();
   const apiRef = useRef<any>(null);
   const isInitialLoadRef = useRef(true);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSavedVersionRef = useRef(-1);
   
   // Atualizar URL quando desenho carregar
   useEffect(() => {
     if (currentDrawing?.id) {
-      console.log('🔗 Atualizando URL para desenho:', currentDrawing.name, currentDrawing.id);
       navigate({ 
         to: "/app", 
         search: { drawingId: currentDrawing.id },
@@ -31,25 +39,17 @@ export const ExcalidrawCanvas = () => {
   
   // Callback quando API do Excalidraw monta
   const onExcalidrawAPIMount = useCallback((api: any) => {
-    console.log('🎯 Excalidraw API montada:', !!api);
+    console.log('🎯 Excalidraw API montada');
     apiRef.current = api;
-    
-    // Debug: verificar se API tem métodos esperados
-    if (api) {
-      console.log('🔍 API methods available:', {
-        getSceneElements: typeof api.getSceneElements,
-        getAppState: typeof api.getAppState,
-        getFiles: typeof api.getFiles,
-        updateScene: typeof api.updateScene
-      });
-    }
   }, []);
   
   // Carregar drawing no canvas quando mudar
   useEffect(() => {
     if (!apiRef.current || !currentDrawing) return;
     
-    // Marcar que está carregando para não triggerar auto-save
+    console.log('📂 Carregando drawing no canvas:', currentDrawing.name);
+    
+    // Marcar que está carregando
     isInitialLoadRef.current = true;
     
     // Carregar elementos no canvas
@@ -63,55 +63,86 @@ export const ExcalidrawCanvas = () => {
       apiRef.current.addFiles(Object.values(currentDrawing.files));
     }
     
-    // Liberar auto-save após um pequeno delay
+    // Resetar version tracking
+    lastSavedVersionRef.current = -1;
+    
+    // Liberar auto-save após delay
     setTimeout(() => {
       isInitialLoadRef.current = false;
+      console.log('✅ Drawing carregado, auto-save habilitado');
     }, 500);
-  }, [currentDrawing?.id]); // Apenas quando o ID mudar
+  }, [currentDrawing?.id]);
   
-  // Handler de mudanças (auto-save)
-  const handleChange = useCallback(() => {
-    console.log('🔥 handleChange chamado:', {
-      hasAPI: !!apiRef.current,
-      hasDrawing: !!currentDrawing,
-      isInitialLoad: isInitialLoadRef.current,
-      drawingId: currentDrawing?.id
-    });
-    
-    if (!apiRef.current) {
-      console.log('❌ Sem API ref');
-      return;
-    }
-    
+  // Handler de mudanças (auto-save com debounce)
+  const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
+    // Guards
     if (!currentDrawing) {
-      console.log('❌ Sem currentDrawing');
+      console.log('⏭️ Sem currentDrawing, ignorando onChange');
       return;
     }
     
     if (isInitialLoadRef.current) {
-      console.log('❌ Ainda carregando inicial, ignorando...');
+      console.log('⏭️ Carregamento inicial, ignorando onChange');
       return;
     }
     
-    const elements = apiRef.current.getSceneElements();
-    const appState = apiRef.current.getAppState();
-    const files = apiRef.current.getFiles();
+    // Calcular scene version simples (número de elementos)
+    const currentVersion = elements.length;
     
-    console.log('🎨 Canvas mudou - dados válidos:', {
+    // Se versão não mudou, pular
+    if (currentVersion === lastSavedVersionRef.current) {
+      return;
+    }
+    
+    console.log('🎨 Canvas mudou:', {
       drawingId: currentDrawing.id,
       elementCount: elements.length,
-      hasFiles: Object.keys(files).length > 0,
-      scheduleAutoSaveExists: typeof scheduleAutoSave === 'function'
+      lastSaved: lastSavedVersionRef.current
     });
     
-    // Agendar auto-save com debounce via store Zustand
-    if (typeof scheduleAutoSave === 'function') {
-      console.log('📝 Chamando scheduleAutoSave...');
-      scheduleAutoSave(elements, appState, files);
-    } else {
-      console.error('❌ scheduleAutoSave não é uma função:', typeof scheduleAutoSave);
+    // Cancelar timeout anterior
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
-  }, [currentDrawing, scheduleAutoSave]);
+    
+    // Agendar save com debounce de 2s
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        useDrawingStore.setState({ syncStatus: "saving" });
+        
+        console.log('💾 Salvando drawing...');
+        
+        // Salvar via RPC
+        await client.UPDATE_DRAWING({
+          drawingId: currentDrawing.id,
+          elements: [...elements], // Convert readonly to mutable
+          appState,
+          files,
+          branch,
+        });
+        
+        // Atualizar version tracking
+        lastSavedVersionRef.current = currentVersion;
+        
+        // Atualizar metadata no store
+        useDrawingStore.setState((state) => ({
+          drawings: state.drawings.map(d => 
+            d.id === currentDrawing.id 
+              ? { ...d, elementCount: elements.length, updatedAt: Date.now() }
+              : d
+          ),
+          syncStatus: "idle"
+        }));
+        
+        console.log('✅ Drawing salvo com sucesso');
+        
+      } catch (error) {
+        console.error('❌ Erro ao salvar drawing:', error);
+        useDrawingStore.setState({ syncStatus: "error" });
+      }
+    }, 2000);
+    
+  }, [currentDrawing, branch]);
   
   // Empty state quando não há drawing
   if (!currentDrawing) {
@@ -142,53 +173,8 @@ export const ExcalidrawCanvas = () => {
     );
   }
   
-  // Loading state
-  if (isLoading) {
-    return (
-      <div className="h-full w-full flex items-center justify-center bg-slate-900">
-        <div className="text-slate-400">Carregando desenho...</div>
-      </div>
-    );
-  }
-  
-  // Função de teste manual
-  const testarConexao = useCallback(() => {
-    console.log('🧪 TESTE MANUAL DE CONEXÃO');
-    console.log('API ref:', !!apiRef.current);
-    console.log('Current drawing:', !!currentDrawing);
-    console.log('scheduleAutoSave:', typeof scheduleAutoSave);
-    
-    if (apiRef.current && currentDrawing) {
-      console.log('🧪 Testando manualmente...');
-      const elements = apiRef.current.getSceneElements();
-      const appState = apiRef.current.getAppState();
-      const files = apiRef.current.getFiles();
-      
-      console.log('🧪 Dados obtidos:', {
-        elementCount: elements?.length,
-        hasAppState: !!appState,
-        hasFiles: !!files
-      });
-      
-      if (typeof scheduleAutoSave === 'function') {
-        console.log('🧪 Chamando scheduleAutoSave manualmente...');
-        scheduleAutoSave(elements || [], appState || {}, files || {});
-      }
-    }
-  }, [currentDrawing, scheduleAutoSave]);
-  
   return (
     <div className="h-full w-full relative">
-      {/* Debug controls */}
-      <div className="absolute top-4 left-4 z-50 space-y-2">
-        <button
-          onClick={testarConexao}
-          className="px-3 py-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded text-sm font-mono"
-        >
-          🧪 Testar Conexão
-        </button>
-      </div>
-      
       {/* Indicador de sync simples */}
       <div className="absolute top-4 right-4 z-50">
         {syncStatus === "saving" && (

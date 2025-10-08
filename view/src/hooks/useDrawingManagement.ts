@@ -73,23 +73,6 @@ export const useDrawings = () => {
   };
 };
 
-/**
- * Hook para auto-save
- */
-export const useAutoSave = () => {
-  const scheduleAutoSave = useDrawingStore((state) => state.scheduleAutoSave);
-  const forceSave = useDrawingStore((state) => state.forceSave);
-  const cancelAutoSave = useDrawingStore((state) => state.cancelAutoSave);
-  const syncStatus = useDrawingStore((state) => state.syncStatus);
-  
-  return {
-    scheduleAutoSave,
-    forceSave,
-    cancelAutoSave,
-    syncStatus,
-    isSaving: syncStatus === "saving",
-  };
-};
 
 /**
  * Hook para branch management
@@ -126,13 +109,11 @@ export const useInitializeDrawingStore = () => {
  */
 export const useCurrentDrawing = () => {
   const currentDrawing = useDrawingStore((state) => state.currentDrawing);
-  const saveCurrentDrawing = useDrawingStore((state) => state.saveCurrentDrawing);
   const renameCurrentDrawing = useDrawingStore((state) => state.renameCurrentDrawing);
   const syncStatus = useDrawingStore((state) => state.syncStatus);
   
   return {
     currentDrawing,
-    saveCurrentDrawing,
     renameCurrentDrawing,
     syncStatus,
     isLoading: syncStatus === "loading",

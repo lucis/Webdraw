@@ -217,3 +217,4 @@ Se algo não ficou claro ou precisar de ajuda:
 **Confidence**: 🟢 Alto (infraestrutura pronta, plan claro)
 
 *Atualizado em: 2025-10-07 18:54*
+

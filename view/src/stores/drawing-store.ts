@@ -85,11 +85,6 @@ interface DrawingStoreState {
   /** Mensagem de erro */
   error: string | null;
   
-  /** Timeout do auto-save */
-  autoSaveTimeout: NodeJS.Timeout | null;
-  
-  /** Último hash dos dados salvos (para prevenir saves desnecessários) */
-  lastSaveHash: string | null;
   
   // ==================== FOLDER ACTIONS ====================
   
@@ -135,14 +130,6 @@ interface DrawingStoreState {
    */
   loadDrawing: (id: string) => Promise<void>;
   
-  /**
-   * Salva o drawing atual (elementos + appState + files)
-   */
-  saveCurrentDrawing: (
-    elements: any[],
-    appState: Record<string, any>,
-    files: Record<string, any>
-  ) => Promise<void>;
   
   /**
    * Deleta um drawing
@@ -170,27 +157,6 @@ interface DrawingStoreState {
    * Troca de branch
    */
   switchBranch: (newBranch: string) => Promise<void>;
-  
-  // ==================== AUTO-SAVE ====================
-  
-  /**
-   * Agenda auto-save com debounce
-   */
-  scheduleAutoSave: (
-    elements: any[],
-    appState: Record<string, any>,
-    files: Record<string, any>
-  ) => void;
-  
-  /**
-   * Força save imediato
-   */
-  forceSave: () => Promise<void>;
-  
-  /**
-   * Cancela auto-save pendente
-   */
-  cancelAutoSave: () => void;
   
   // ==================== UTILITY ====================
   
@@ -222,8 +188,6 @@ export const useDrawingStore = create<DrawingStoreState>()(
         syncStatus: "idle",
         isLoading: false,
         error: null,
-        autoSaveTimeout: null,
-        lastSaveHash: null,
         
         // ==================== FOLDER ACTIONS ====================
         
@@ -437,7 +401,6 @@ export const useDrawingStore = create<DrawingStoreState>()(
             set({
               currentDrawing: result.drawing,
               syncStatus: "idle",
-              lastSaveHash: null, // Reset hash ao carregar novo drawing
             });
           } catch (error) {
             set({
@@ -448,92 +411,6 @@ export const useDrawingStore = create<DrawingStoreState>()(
           }
         },
         
-        saveCurrentDrawing: async (
-          elements: any[],
-          appState: Record<string, any>,
-          files: Record<string, any>
-        ) => {
-          const { currentDrawing, branch } = get();
-          
-          console.log('💾 saveCurrentDrawing iniciado:', {
-            hasDrawing: !!currentDrawing,
-            drawingId: currentDrawing?.id,
-            elementCount: elements.length,
-            branch
-          });
-          
-          if (!currentDrawing) {
-            console.error('❌ Nenhum drawing aberto para salvar');
-            throw new Error("Nenhum drawing aberto");
-          }
-          
-          // Criar hash dos dados para comparação
-          const currentHash = JSON.stringify({ elements, appState });
-          const lastHash = get().lastSaveHash;
-          
-          console.log('🔍 Verificando se dados mudaram:', {
-            currentHash: currentHash.substring(0, 50) + '...',
-            lastHash: lastHash ? lastHash.substring(0, 50) + '...' : null,
-            mudou: currentHash !== lastHash
-          });
-          
-          // Se dados não mudaram, não salvar
-          if (currentHash === lastHash) {
-            console.log('⏭️ Dados não mudaram, pulando save');
-            return;
-          }
-          
-          console.log('💾 Iniciando save - dados mudaram');
-          set({ syncStatus: "saving" });
-          
-          try {
-            console.log('🌐 Chamando UPDATE_DRAWING via RPC...');
-            await client.UPDATE_DRAWING({
-              drawingId: currentDrawing.id,
-              elements,
-              appState,
-              files,
-              branch,
-            });
-            
-            console.log('✅ UPDATE_DRAWING bem-sucedido');
-            
-            // Atualizar drawing atual com novos elementos
-            const updatedDrawing = {
-              ...currentDrawing,
-              elements,
-              appState,
-              files,
-              updatedAt: Date.now(),
-            };
-            
-            // Atualizar na lista de drawings com elementCount
-            const updatedDrawings = get().drawings.map(d => 
-              d.id === currentDrawing.id 
-                ? { ...d, elementCount: elements.length, updatedAt: Date.now() }
-                : d
-            );
-            
-            console.log('🔄 Atualizando estado local:', {
-              elementCount: elements.length,
-              drawingsUpdated: updatedDrawings.length
-            });
-            
-            set({
-              syncStatus: "idle",
-              lastSaveHash: currentHash,
-              currentDrawing: updatedDrawing,
-              drawings: updatedDrawings,
-            });
-            
-          } catch (error) {
-            set({
-              error: `Erro ao salvar drawing: ${error}`,
-              syncStatus: "error",
-            });
-            throw error;
-          }
-        },
         
         deleteDrawing: async (id: string) => {
           set({ isLoading: true, error: null });
@@ -656,57 +533,6 @@ export const useDrawingStore = create<DrawingStoreState>()(
           
           // Recarregar tudo
           await get().initialize();
-        },
-        
-        // ==================== AUTO-SAVE ====================
-        
-        scheduleAutoSave: (
-          elements: any[],
-          appState: Record<string, any>,
-          files: Record<string, any>
-        ) => {
-          console.log('💾 scheduleAutoSave recebido:', {
-            elementCount: elements.length,
-            hasCurrentDrawing: !!get().currentDrawing,
-            currentDrawingId: get().currentDrawing?.id
-          });
-          
-          // Cancelar timeout anterior
-          const timeout = get().autoSaveTimeout;
-          if (timeout) {
-            console.log('⏰ Cancelando timeout anterior');
-            clearTimeout(timeout);
-          }
-          
-          // Agendar novo save
-          console.log('⏰ Agendando save em 2s...');
-          const newTimeout = setTimeout(async () => {
-            try {
-              console.log('💾 Executando auto-save agendado...');
-              await get().saveCurrentDrawing(elements, appState, files);
-              console.log('✅ Auto-save concluído');
-            } catch (error) {
-              console.error("❌ Auto-save falhou:", error);
-            }
-          }, 2000); // 2 segundos de debounce
-          
-          set({ autoSaveTimeout: newTimeout });
-        },
-        
-        forceSave: async () => {
-          // Cancelar auto-save pendente
-          get().cancelAutoSave();
-          
-          // Não temos os dados aqui, então apenas marcamos para forçar no próximo onChange
-          set({ lastSaveHash: null });
-        },
-        
-        cancelAutoSave: () => {
-          const timeout = get().autoSaveTimeout;
-          if (timeout) {
-            clearTimeout(timeout);
-            set({ autoSaveTimeout: null });
-          }
         },
         
         // ==================== UTILITY ====================
