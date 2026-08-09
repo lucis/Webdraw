@@ -1,171 +1,92 @@
-# Webdraw - Editor de Desenho com IA
+# Webdraw
 
-Uma aplicação de desenho baseada na biblioteca Excalidraw, com capacidades de IA integradas. Construído com [Deco MCP](https://spec.modelcontextprotocol.io/) para ferramentas de IA e React para a interface.
+Webdraw é um editor de desenho baseado em Excalidraw. O frontend React e o
+Worker Cloudflare armazenam pastas, desenhos, sessões e credenciais cifradas
+no D1.
 
-## 🎨 Recursos
+## Requisitos
 
-- **Editor Excalidraw Completo**: Interface poderosa de desenho e diagramação
-- **Gerenciamento de Desenhos**: Crie, edite, salve e organize múltiplos desenhos
-- **Auto-save Inteligente**: Salvamento automático enquanto você desenha (debounce de 2s)
-- **Exportação Flexível**: Exporte seus desenhos como PNG, SVG ou JSON
-- **Estado Global com Zustand**: Gerenciamento eficiente e type-safe de estado
-- **Arquitetura Preparada para IA**: Estrutura pronta para integração com ferramentas de IA
+- Node.js 22 ou superior
+- npm
+- Uma conta Cloudflare com um banco D1 configurado no `wrangler.jsonc`
+- Uma aplicação OpenRouter configurada para OAuth
 
-## 📝 Development History
+## Desenvolvimento local
 
-This repository uses [Specstory](https://specstory.com/) to track the history of
-prompts that were used to code this repo. You can inspect the complete
-development history in the [`.specstory/`](.specstory/) folder.
-
-## 🚀 Começando
-
-### Pré-requisitos
-
-- Node.js ≥22.0.0
-- Deno ≥2.0.0
-- npm ≥8.0.0
-
-### Instalação
+Instale as dependências e crie a configuração local a partir do exemplo:
 
 ```bash
-# Instalar dependências
 npm install
+cp .dev.vars.example .dev.vars
+```
 
-# Configurar projeto
-npm run configure
+Gere uma chave de cifragem de exatamente 32 bytes codificada em base64 e copie
+o resultado para `AUTH_ENCRYPTION_KEY` em `.dev.vars`:
 
-# Iniciar desenvolvimento
+```bash
+openssl rand -base64 32
+```
+
+Mantenha `APP_ORIGIN=http://localhost:5173` para o ambiente local. A URL de
+callback que deve ser registrada na aplicação OpenRouter é:
+
+```
+http://localhost:5173/api/auth/callback
+```
+
+Crie o banco D1 local e inicie o servidor de desenvolvimento:
+
+```bash
+npm run db:migrate:local
 npm run dev
 ```
 
-**Acesse `http://localhost:5173/canvas` para começar a desenhar!**
+Abra `http://localhost:5173`. O login começa em `/api/auth/login`; a chave
+OpenRouter recebida no callback é tratada pelo Worker e não é exposta ao
+navegador.
 
-O servidor MCP estará disponível em `http://localhost:8787`.
+## Publicação no Cloudflare
 
-## 📁 Estrutura do Projeto
-
-```
-├── server/                    # MCP Server (Cloudflare Workers)
-│   ├── main.ts               # Servidor com tools e workflows
-│   ├── tools/                # Tools organizados por domínio
-│   └── workflows/            # Workflows (futuro: IA)
-├── view/                      # React Frontend
-│   ├── src/
-│   │   ├── components/
-│   │   │   └── canvas/       # Componentes do Excalidraw
-│   │   ├── stores/
-│   │   │   └── drawing-store.ts  # Estado global (Zustand)
-│   │   ├── lib/
-│   │   │   ├── storage.ts        # Abstração de persistência
-│   │   │   └── excalidraw-state.ts  # Gerenciador do canvas
-│   │   ├── hooks/            # React hooks customizados
-│   │   ├── routes/           # TanStack Router routes
-│   │   └── types/            # TypeScript types
-│   └── package.json
-└── plans/
-    └── excalidraw.md         # 📖 Documentação detalhada
-```
-
-## 🎯 Arquitetura
-
-### Camadas de Abstração
-
-```
-┌─────────────────────────────────────────────────┐
-│         Componentes React (Canvas, UI)          │
-└──────────────────┬──────────────────────────────┘
-                   │
-┌──────────────────▼──────────────────────────────┐
-│      Zustand Store (Estado Global)              │
-│  - drawings[]                                    │
-│  - currentDrawing                                │
-│  - loading/error states                          │
-└──────────────────┬──────────────────────────────┘
-                   │
-┌──────────────────▼──────────────────────────────┐
-│        Storage API (Abstração 1:1)              │
-│  - createDrawing()                               │
-│  - getDrawing()                                  │
-│  - updateDrawing()                               │
-│  - deleteDrawing()                               │
-└──────────────────┬──────────────────────────────┘
-                   │
-        ┌──────────▼───────────┐
-        │   localStorage       │
-        │      (hoje)          │
-        └──────────────────────┘
-                   │
-        ┌──────────▼───────────┐
-        │   Backend API        │
-        │     (futuro)         │
-        └──────────────────────┘
-```
-
-### Por que esta arquitetura?
-
-1. **Storage API como Abstração**: A interface `DrawingStorage` foi desenhada para ser **1:1 com os tools do servidor**. Quando a API backend estiver pronta, basta trocar a implementação sem modificar nenhum outro código.
-
-2. **Zustand para Estado Global**: Gerencia estado de forma eficiente e type-safe, com DevTools integradas para debugging.
-
-3. **ExcalidrawStateManager**: Encapsula toda a lógica de interação com a API imperativa do Excalidraw (auto-save, exportação, etc).
-
-## 🛠️ Comandos Disponíveis
+Antes da primeira publicação, aplique as migrações ao banco remoto:
 
 ```bash
-# Desenvolvimento
-npm run dev          # Inicia frontend + backend com hot reload
-npm run gen          # Gera tipos para integrações externas
-npm run gen:self     # Gera tipos dos seus próprios tools
-
-# Produção
-npm run deploy       # Deploy para Cloudflare Workers
-
-# Utilitários
-npm run configure    # Configurar workspace
+npx wrangler d1 migrations apply DB --remote
 ```
 
-## 📚 Documentação Detalhada
+Defina os valores de produção de forma interativa, sem colocá-los em arquivos
+versionados:
 
-Para informações completas sobre a integração do Excalidraw, arquitetura e roadmap:
-- **[Plano de Integração Excalidraw](/plans/excalidraw.md)**
+```bash
+npx wrangler secret put AUTH_ENCRYPTION_KEY
+npx wrangler secret put APP_ORIGIN
+```
 
-Este documento inclui:
-- Fluxo de dados completo
-- Padrões de implementação
-- Guia de migração para backend
-- Roadmap de funcionalidades futuras (IA)
+`AUTH_ENCRYPTION_KEY` deve ser uma nova chave base64 de 32 bytes. `APP_ORIGIN`
+deve ser a origem HTTPS final do Worker. Registre então
+`https://seu-dominio/api/auth/callback` como callback da aplicação OpenRouter,
+substituindo `seu-dominio` pela origem configurada.
 
-## 🔮 Próximos Passos (Roadmap)
+Publique o Worker e os assets:
 
-### ✅ Implementado
-- [x] Integração Excalidraw
-- [x] Gerenciamento de múltiplos desenhos
-- [x] Auto-save com debounce
-- [x] Storage abstraction (localStorage)
-- [x] Estado global com Zustand
-- [x] Exportação PNG/SVG/JSON
+```bash
+npm run deploy
+```
 
-### 🚧 Em Desenvolvimento
-- [ ] API de persistência backend
-- [ ] Migração de localStorage para servidor
-- [ ] Colaboração em tempo real
+## Verificação
 
-### 🔮 Planejado (IA)
-- [ ] Geração de desenhos com IA
-- [ ] Auto-complete de formas
-- [ ] Sugestões de layout
-- [ ] Conversão texto → diagrama
-- [ ] Análise semântica de desenhos
+```bash
+bash scripts/check-no-deco.sh
+npm test
+npm run test:worker
+npm run typecheck
+npm run lint
+npm run build
+npx wrangler deploy --dry-run
+```
 
-## 📖 Learn More
+## Estrutura
 
-This template is built for deploying primarily on top of the
-[Deco platform](https://decocms.com) which can be found at the
-[deco-cx/chat](https://github.com/deco-cx/chat) repository.
-
-Documentation can be found at [https://docs.deco.page](https://docs.deco.page)
-
----
-
-**Ready to build your next MCP server with a beautiful frontend?
-[Get started now!](https://admin.decocms.com)**
+- `worker/`: API HTTP, autenticação OpenRouter e acesso ao D1.
+- `view/`: interface React e integração com o canvas.
+- `migrations/`: esquema versionado do banco D1.
+- `shared/contracts/`: contratos entre browser e Worker.

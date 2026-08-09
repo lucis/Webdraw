@@ -6,7 +6,7 @@
  */
 
 import { createRoute, type RootRoute, Link } from "@tanstack/react-router";
-import { Folder, Zap, Users, Shield, ArrowRight } from "lucide-react";
+import { Folder, Zap, Database, Shield, ArrowRight } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { UserButton } from "../components/user-button";
 import { useOptionalCurrentUser } from "../lib/auth";
@@ -109,13 +109,13 @@ function AboutPage() {
             {/* Feature 3 */}
             <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
               <div className="bg-purple-600/10 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
-                <Users className="w-6 h-6 text-purple-500" />
+                <Database className="w-6 h-6 text-purple-500" />
               </div>
               <h4 className="text-lg font-semibold text-white mb-2">
-                Branches
+                Persistência Segura
               </h4>
               <p className="text-sm text-slate-400">
-                Seus desenhos são organizados em um workspace pessoal e seguro.
+                Seus desenhos são isolados por conta e persistidos com segurança.
               </p>
             </div>
             

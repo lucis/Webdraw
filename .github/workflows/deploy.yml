@@ -25,15 +25,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify
+      - name: Test
         run: |
           npm test
           npm run test:worker
-          npm run typecheck
-          npm run lint
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build Worker and assets
+        run: npm run build
 
       - name: Deploy Worker
-        run: npm run deploy
+        run: npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
