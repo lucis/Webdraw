@@ -8,6 +8,7 @@
   },
   "include": [
     "./worker",
+    "./shared",
     "./worker-configuration.d.ts"
   ]
 }
