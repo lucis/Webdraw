@@ -32,3 +32,9 @@ npm run build
 ```
 
 Focused tests cover default-folder initialization, drawing creation/load, URL drawing load, autosave version propagation, visible 409 conflict state, unauthenticated login target, OpenRouter identifier display, and POST logout.
+
+## Review follow-up
+
+- `requestJson` now returns `undefined` for `204`, `205`, and empty successful response bodies while preserving JSON parsing for non-empty success responses. This matches the Worker logout and delete contracts.
+- An unauthenticated `LoggedProvider` now calls `location.assign(loginPath())`; the focused test replaces the global `location` safely and asserts `/api/auth/login?next=%2Fapp`.
+- Logout catches a failed API request and displays the error instead of allowing the asynchronous click handler to reject without handling it.

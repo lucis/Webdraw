@@ -20,6 +20,18 @@ describe("requestJson", () => {
     await expect(requestJson<{ ok: boolean }>("/api/test")).resolves.toEqual({ ok: true });
   });
 
+  it("returns undefined for a successful 204 response without parsing JSON", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+
+    await expect(requestJson<void>("/api/auth/logout", { method: "POST" })).resolves.toBeUndefined();
+  });
+
+  it("returns undefined for an empty successful response", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response("", { status: 200 }));
+
+    await expect(requestJson<void>("/api/delete", { method: "DELETE" })).resolves.toBeUndefined();
+  });
+
   it("uses same-origin credentials and only adds a JSON content type for bodies", async () => {
     const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response("{}")));
     globalThis.fetch = fetchMock;

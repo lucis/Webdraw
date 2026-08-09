@@ -17,15 +17,19 @@ export function UserButton() {
   const { data, isPending } = useOptionalCurrentUser();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [loggedOut, setLoggedOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
 
   if (isPending || loggedOut || !data?.user) return <LoginButton />;
   const { openRouterUserId } = data.user;
 
   const logout = async () => {
     setIsLoggingOut(true);
+    setLogoutError(null);
     try {
       await requestJson<void>("/api/auth/logout", { method: "POST" });
       setLoggedOut(true);
+    } catch (error) {
+      setLogoutError(error instanceof Error ? error.message : "Unable to log out");
     } finally {
       setIsLoggingOut(false);
     }
@@ -43,6 +47,7 @@ export function UserButton() {
           <p className="text-sm text-slate-300 text-center">Signed in with OpenRouter</p>
           <div className="border-t border-slate-700" />
           <div className="text-xs text-slate-400 break-all">{openRouterUserId}</div>
+          {logoutError && <p role="alert" className="text-xs text-red-400">{logoutError}</p>}
           <Button type="button" size="sm" variant="ghost" disabled={isLoggingOut} onClick={logout} className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-950/30">
             <LogOut className="w-3 h-3 mr-2" />
             Log out

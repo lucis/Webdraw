@@ -25,17 +25,19 @@ function renderWithQuery(ui: React.ReactNode) {
 afterEach(() => {
   requestJson.mockReset();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("LoggedProvider and UserButton", () => {
   it("redirects an unauthenticated app request to the OpenRouter login route", async () => {
-    window.history.replaceState({}, "", "/app");
+    const assign = vi.fn();
+    vi.stubGlobal("location", { assign, pathname: "/app", search: "", hash: "" });
     requestJson.mockRejectedValue(new ApiClientError(401, "unauthorized", "Sign in required"));
 
     renderWithQuery(<LoggedProvider><div>Protected canvas</div></LoggedProvider>);
 
-    const loginLink = await screen.findByRole("link", { name: "Sign in with OpenRouter" });
-    expect(loginLink.getAttribute("href")).toBe("/api/auth/login?next=%2Fapp");
+    await screen.findByText("Redirecting to OpenRouter sign in…");
+    expect(assign).toHaveBeenCalledWith("/api/auth/login?next=%2Fapp");
   });
 
   it("shows the OpenRouter identifier and logs out with POST", async () => {
@@ -50,5 +52,18 @@ describe("LoggedProvider and UserButton", () => {
     await user.click(screen.getByRole("button", { name: "Log out" }));
 
     expect(requestJson).toHaveBeenLastCalledWith("/api/auth/logout", { method: "POST" });
+  });
+
+  it("handles a failed logout in the UI", async () => {
+    requestJson.mockResolvedValueOnce({ user: { id: "user-1", openRouterUserId: "openrouter-42" } });
+    requestJson.mockRejectedValueOnce(new Error("Logout request failed"));
+    const user = userEvent.setup();
+
+    renderWithQuery(<UserButton />);
+
+    await user.click(await screen.findByRole("button", { name: /openrouter-42/i }));
+    await user.click(screen.getByRole("button", { name: "Log out" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe("Logout request failed");
   });
 });

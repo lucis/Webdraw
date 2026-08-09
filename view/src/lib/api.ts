@@ -37,7 +37,12 @@ export async function requestJson<TOutput>(
   const response = await fetch(path, requestInit);
 
   if (response.ok) {
-    return response.json() as Promise<TOutput>;
+    if (response.status === 204 || response.status === 205) {
+      return undefined as TOutput;
+    }
+
+    const body = await response.text();
+    return (body.length === 0 ? undefined : JSON.parse(body)) as TOutput;
   }
 
   const errorBody = await response.json().catch(() => undefined);
