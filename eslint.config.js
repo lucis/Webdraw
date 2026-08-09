@@ -6,6 +6,7 @@ export default tseslint.config(
   {
     ignores: [
       "dist/",
+      ".worktrees/",
       "node_modules/",
       ".wrangler/",
       "worker-configuration.d.ts",

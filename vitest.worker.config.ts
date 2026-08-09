@@ -14,6 +14,7 @@ export default defineConfig({
     })),
   ],
   test: {
+    exclude: ["**/node_modules/**", ".worktrees/**"],
     setupFiles: ["./test/setup.ts"],
   },
 });
