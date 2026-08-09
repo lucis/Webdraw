@@ -2,8 +2,8 @@
  * Componente principal do canvas Excalidraw
  * 
  * Padrão simples:
- * - onChange → debounce → save via RPC
- * - Scene version tracking para evitar loops
+ * - onChange → debounce → save via HTTP API
+ * - Scene fingerprint tracking para evitar loops
  * - API imperativa única
  */
 
@@ -12,19 +12,20 @@ import "@excalidraw/excalidraw/index.css";
 import { useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useDrawingStore } from "../../stores/drawing-store";
-import { client } from "../../lib/rpc";
 
 export const ExcalidrawCanvas = () => {
   // Estado do store
   const currentDrawing = useDrawingStore((state) => state.currentDrawing);
-  const branch = useDrawingStore((state) => state.branch);
   const syncStatus = useDrawingStore((state) => state.syncStatus);
-  
+  const saveCurrentDrawing = useDrawingStore((state) => state.saveCurrentDrawing);
+
   const navigate = useNavigate();
-  const apiRef = useRef<any>(null);
-  const isInitialLoadRef = useRef(true);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastSavedVersionRef = useRef(-1);
+  const lastSavedSceneRef = useRef<string | null>(null);
+
+  // Preparar initialData do drawing atual
+  // ⚠️ IMPORTANTE: Não incluir campos que causam loops no Excalidraw
+  const initialData = currentDrawing?.scene;
   
   // Atualizar URL quando desenho carregar
   useEffect(() => {
@@ -40,64 +41,34 @@ export const ExcalidrawCanvas = () => {
   // Callback quando API do Excalidraw monta
   const onExcalidrawAPIMount = useCallback((api: any) => {
     console.log('🎯 Excalidraw API montada');
-    apiRef.current = api;
-  }, []);
-  
-  // Carregar drawing no canvas quando mudar
-  useEffect(() => {
-    if (!apiRef.current || !currentDrawing) return;
-    
-    console.log('📂 Carregando drawing no canvas:', currentDrawing.name);
-    
-    // Marcar que está carregando
-    isInitialLoadRef.current = true;
-    
-    // Carregar elementos no canvas
-    apiRef.current.updateScene({
-      elements: currentDrawing.elements || [],
-      appState: currentDrawing.appState || {},
-    });
-    
-    // Carregar arquivos (imagens)
-    if (currentDrawing.files && Object.keys(currentDrawing.files).length > 0) {
-      apiRef.current.addFiles(Object.values(currentDrawing.files));
+    void api;
+
+    // O desenho é carregado pelo initialData do remount, não por updateScene.
+    if (currentDrawing) {
+      lastSavedSceneRef.current = sceneFingerprint(currentDrawing.scene);
     }
-    
-    // Resetar version tracking
-    lastSavedVersionRef.current = -1;
-    
-    // Liberar auto-save após delay
-    setTimeout(() => {
-      isInitialLoadRef.current = false;
-      console.log('✅ Drawing carregado, auto-save habilitado');
-    }, 500);
-  }, [currentDrawing?.id]);
+  }, [currentDrawing]);
   
   // Handler de mudanças (auto-save com debounce)
   const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
-    // Guards
+    // Guard 1: Sem drawing
     if (!currentDrawing) {
-      console.log('⏭️ Sem currentDrawing, ignorando onChange');
       return;
     }
     
-    if (isInitialLoadRef.current) {
-      console.log('⏭️ Carregamento inicial, ignorando onChange');
+    // Guard 2: Drawing ainda não foi carregado no canvas.
+    if (lastSavedSceneRef.current === null) {
+      return;
+    }
+
+    const scene = { elements: [...elements], appState, files };
+    const fingerprint = sceneFingerprint(scene);
+    if (fingerprint === lastSavedSceneRef.current) {
       return;
     }
     
-    // Calcular scene version simples (número de elementos)
-    const currentVersion = elements.length;
-    
-    // Se versão não mudou, pular
-    if (currentVersion === lastSavedVersionRef.current) {
-      return;
-    }
-    
-    console.log('🎨 Canvas mudou:', {
+    console.log('✅ onChange - Agendando save:', {
       drawingId: currentDrawing.id,
-      elementCount: elements.length,
-      lastSaved: lastSavedVersionRef.current
     });
     
     // Cancelar timeout anterior
@@ -108,41 +79,22 @@ export const ExcalidrawCanvas = () => {
     // Agendar save com debounce de 2s
     saveTimeoutRef.current = setTimeout(async () => {
       try {
-        useDrawingStore.setState({ syncStatus: "saving" });
+        const savedDrawing = await saveCurrentDrawing(scene);
+        lastSavedSceneRef.current = sceneFingerprint(savedDrawing.scene);
         
-        console.log('💾 Salvando drawing...');
-        
-        // Salvar via RPC
-        await client.UPDATE_DRAWING({
-          drawingId: currentDrawing.id,
-          elements: [...elements], // Convert readonly to mutable
-          appState,
-          files,
-          branch,
-        });
-        
-        // Atualizar version tracking
-        lastSavedVersionRef.current = currentVersion;
-        
-        // Atualizar metadata no store
-        useDrawingStore.setState((state) => ({
-          drawings: state.drawings.map(d => 
-            d.id === currentDrawing.id 
-              ? { ...d, elementCount: elements.length, updatedAt: Date.now() }
-              : d
-          ),
-          syncStatus: "idle"
-        }));
-        
-        console.log('✅ Drawing salvo com sucesso');
+        console.log('✅ Salvo!');
         
       } catch (error) {
-        console.error('❌ Erro ao salvar drawing:', error);
+        console.error('❌ Erro ao salvar:', error);
         useDrawingStore.setState({ syncStatus: "error" });
       }
     }, 2000);
     
-  }, [currentDrawing, branch]);
+  }, [currentDrawing, saveCurrentDrawing]);
+
+  useEffect(() => () => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+  }, []);
   
   // Empty state quando não há drawing
   if (!currentDrawing) {
@@ -193,14 +145,10 @@ export const ExcalidrawCanvas = () => {
       
       {/* Canvas Excalidraw */}
       <Excalidraw
+        key={currentDrawing.id}
         excalidrawAPI={onExcalidrawAPIMount}
         onChange={handleChange}
-        initialData={{
-          appState: {
-            viewBackgroundColor: "#ffffff",
-            theme: "light",
-          },
-        }}
+        initialData={initialData}
         UIOptions={{
           canvasActions: {
             loadScene: false,
@@ -210,3 +158,7 @@ export const ExcalidrawCanvas = () => {
     </div>
   );
 };
+
+function sceneFingerprint(scene: { elements: readonly unknown[]; appState: unknown; files: unknown }): string {
+  return JSON.stringify(scene);
+}

@@ -14,6 +14,7 @@ export default defineConfig({
     })),
   ],
   test: {
+    include: ["test/worker/**/*.test.ts"],
     exclude: ["**/node_modules/**", ".worktrees/**"],
     setupFiles: ["./test/setup.ts"],
   },

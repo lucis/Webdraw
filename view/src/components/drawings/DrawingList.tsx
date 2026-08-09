@@ -174,7 +174,6 @@ export const DrawingList = () => {
               id={drawing.id}
               name={drawing.name}
               updatedAt={drawing.updatedAt}
-              elementCount={drawing.elementCount}
               isActive={currentDrawing?.id === drawing.id}
               onClick={() => loadDrawing(drawing.id)}
               onDuplicate={() => duplicateDrawing(drawing.id)}
@@ -186,5 +185,4 @@ export const DrawingList = () => {
     </div>
   );
 };
-
 

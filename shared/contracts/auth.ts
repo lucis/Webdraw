@@ -10,3 +10,4 @@ export const currentUserResponseSchema = z.object({
 });
 
 export type CurrentUser = z.infer<typeof currentUserSchema>;
+export type CurrentUserResponse = z.infer<typeof currentUserResponseSchema>;

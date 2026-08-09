@@ -115,7 +115,6 @@ export const FolderList = () => {
               id={folder.id}
               name={folder.name}
               emoji={folder.emoji}
-              drawingCount={folder.drawingIds?.length || 0}
               isDefault={folder.isDefault}
               isActive={folder.id === currentFolderId}
               onClick={() => handleSelectFolder(folder.id)}
@@ -138,5 +137,4 @@ export const FolderList = () => {
     </div>
   );
 };
-
 

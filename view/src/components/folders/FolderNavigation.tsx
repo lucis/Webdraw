@@ -15,7 +15,6 @@ interface FolderNavItemProps {
   name: string;
   emoji: string;
   isActive: boolean;
-  drawingCount: number;
   onClick: () => void;
 }
 
@@ -23,7 +22,6 @@ const FolderNavItem = ({
   name, 
   emoji, 
   isActive, 
-  drawingCount,
   onClick 
 }: FolderNavItemProps) => {
   return (
@@ -47,16 +45,6 @@ const FolderNavItem = ({
       {/* Name */}
       <span className="flex-1 text-sm font-medium truncate">
         {name}
-      </span>
-      
-      {/* Drawing count */}
-      <span className={cn(
-        "text-xs px-1.5 py-0.5 rounded-full flex-shrink-0",
-        isActive 
-          ? "bg-blue-700 text-blue-100" 
-          : "bg-slate-700 text-slate-400 group-hover:bg-slate-600"
-      )}>
-        {drawingCount}
       </span>
       
       {/* Active indicator */}
@@ -145,7 +133,6 @@ export const FolderNavigation = () => {
               key={folder.id}
               name={folder.name}
               emoji={folder.emoji}
-              drawingCount={folder.drawingIds?.length || 0}
               isActive={folder.id === currentFolderId}
               onClick={() => handleSelectFolder(folder.id)}
             />

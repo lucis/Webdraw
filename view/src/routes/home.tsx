@@ -1,8 +1,8 @@
 import { createRoute, type RootRoute } from "@tanstack/react-router";
-import { useOptionalUser } from "@/lib/hooks";
+import { useOptionalCurrentUser } from "@/lib/auth";
 
 function HomePage() {
-  const user = useOptionalUser();
+  const user = useOptionalCurrentUser();
 
   // Redirecionar baseado em autenticação
   if (user.data) {

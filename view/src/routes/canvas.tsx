@@ -14,7 +14,7 @@ function CanvasPage() {
 
   const {
     drawings,
-    currentDrawingId,
+    currentDrawing,
     isLoading,
     error,
     loadDrawings,
@@ -30,10 +30,10 @@ function CanvasPage() {
 
   // Criar primeiro desenho se não houver nenhum
   useEffect(() => {
-    if (!isLoading && drawings.length === 0 && !currentDrawingId) {
+    if (!isLoading && drawings.length === 0 && !currentDrawing) {
       createDrawing("Meu Primeiro Desenho");
     }
-  }, [isLoading, drawings, currentDrawingId, createDrawing]);
+  }, [isLoading, drawings, currentDrawing, createDrawing]);
 
   const handleCreateNewDrawing = async () => {
     if (!newDrawingName.trim()) return;
@@ -130,7 +130,7 @@ function CanvasPage() {
             <div
               key={drawing.id}
               className={`p-2 rounded cursor-pointer border ${
-                currentDrawingId === drawing.id
+                currentDrawing?.id === drawing.id
                   ? "bg-blue-100 border-blue-500"
                   : "bg-white border-gray-300 hover:bg-gray-50"
               }`}
@@ -140,7 +140,7 @@ function CanvasPage() {
               <div className="text-xs text-gray-500">
                 {new Date(drawing.updatedAt).toLocaleDateString()}
               </div>
-              {currentDrawingId === drawing.id && (
+              {currentDrawing?.id === drawing.id && (
                 <Button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -166,7 +166,7 @@ function CanvasPage() {
 
       {/* Canvas principal */}
       <div className="flex-1">
-        {currentDrawingId ? (
+        {currentDrawing ? (
           <ExcalidrawCanvas />
         ) : (
           <div className="flex items-center justify-center h-full">

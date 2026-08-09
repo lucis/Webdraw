@@ -12,7 +12,6 @@ interface DrawingItemProps {
   id: string;
   name: string;
   updatedAt: number;
-  elementCount: number;
   isActive: boolean;
   onClick: () => void;
   onDuplicate: () => void;
@@ -22,7 +21,6 @@ interface DrawingItemProps {
 export const DrawingItem = ({
   name,
   updatedAt,
-  elementCount,
   isActive,
   onClick,
   onDuplicate,
@@ -68,8 +66,6 @@ export const DrawingItem = ({
           }`}
         >
           <span>{formatDate(updatedAt)}</span>
-          <span>•</span>
-          <span>{elementCount} {elementCount === 1 ? "elemento" : "elementos"}</span>
         </div>
       </div>
       

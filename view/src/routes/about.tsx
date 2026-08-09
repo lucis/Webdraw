@@ -9,10 +9,10 @@ import { createRoute, type RootRoute, Link } from "@tanstack/react-router";
 import { Folder, Zap, Users, Shield, ArrowRight } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { UserButton } from "../components/user-button";
-import { useOptionalUser } from "../lib/hooks";
+import { useOptionalCurrentUser } from "../lib/auth";
 
 function AboutPage() {
-  const user = useOptionalUser();
+  const user = useOptionalCurrentUser();
   
   return (
     <div className="min-h-screen bg-slate-900">
@@ -115,7 +115,7 @@ function AboutPage() {
                 Branches
               </h4>
               <p className="text-sm text-slate-400">
-                Sistema de branches para versionamento e organização de workspaces diferentes.
+                Seus desenhos são organizados em um workspace pessoal e seguro.
               </p>
             </div>
             
@@ -164,12 +164,12 @@ function AboutPage() {
           <p className="text-sm text-slate-500">
             Powered by{" "}
             <a
-              href="https://deco.cx"
+              href="https://openrouter.ai"
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-500 hover:text-blue-400 transition-colors"
             >
-              deco.cx
+              OpenRouter
             </a>
             {" "}• Built with Excalidraw
           </p>
@@ -185,5 +185,3 @@ export default (parentRoute: RootRoute) =>
     component: AboutPage,
     getParentRoute: () => parentRoute,
   });
-
-

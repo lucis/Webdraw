@@ -1,566 +1,245 @@
-/**
- * Zustand Store para gerenciamento de Folders e Drawings
- * 
- * Este store gerencia todo o estado global da aplicação Webdraw:
- * - Folders e drawings
- * - Desenho e folder atuais
- * - Branch atual
- * - Status de sincronização
- * - Auto-save
- */
-
 import { create } from "zustand";
-import { devtools, persist } from "zustand/middleware";
-import { client } from "../lib/rpc";
-
-/**
- * Tipos
- */
-interface Folder {
-  id: string;
-  name: string;
-  emoji: string;
-  branch: string;
-  drawingIds: string[];
-  createdAt: number;
-  updatedAt: number;
-  order: number;
-  isDefault: boolean;
-}
-
-interface DrawingMetadata {
-  id: string;
-  name: string;
-  description?: string;
-  branch: string;
-  folderId: string | null;
-  createdAt: number;
-  updatedAt: number;
-  version: number;
-  archived?: boolean;
-  elementCount: number;
-}
-
-interface Drawing {
-  id: string;
-  name: string;
-  description?: string;
-  branch: string;
-  folderId: string | null;
-  elements: any[];
-  appState: Record<string, any>;
-  files: Record<string, any>;
-  createdAt: number;
-  updatedAt: number;
-  version: number;
-  archived?: boolean;
-}
+import type {
+  Drawing,
+  DrawingScene,
+  DrawingSummary,
+} from "../../../shared/contracts/drawings";
+import type { Folder } from "../../../shared/contracts/folders";
+import { requestJson } from "../lib/api";
 
 type SyncStatus = "idle" | "saving" | "loading" | "error";
 
 interface DrawingStoreState {
-  // ==================== STATE ====================
-  
-  /** Lista de folders */
   folders: Folder[];
-  
-  /** Folder atualmente selecionado */
   currentFolderId: string | null;
-  
-  /** Lista de drawings do folder atual */
-  drawings: DrawingMetadata[];
-  
-  /** Drawing atualmente aberto no canvas */
+  drawings: DrawingSummary[];
   currentDrawing: Drawing | null;
-  
-  /** Branch atual */
-  branch: string;
-  
-  /** Status de sincronização */
   syncStatus: SyncStatus;
-  
-  /** Se está carregando */
   isLoading: boolean;
-  
-  /** Mensagem de erro */
   error: string | null;
-  
-  
-  // ==================== FOLDER ACTIONS ====================
-  
-  /**
-   * Carrega todos os folders da branch atual
-   */
   loadFolders: () => Promise<void>;
-  
-  /**
-   * Cria um novo folder
-   */
   createFolder: (name: string, emoji: string) => Promise<Folder>;
-  
-  /**
-   * Atualiza um folder existente
-   */
   updateFolder: (id: string, name: string, emoji: string) => Promise<void>;
-  
-  /**
-   * Deleta um folder
-   */
   deleteFolder: (id: string) => Promise<void>;
-  
-  /**
-   * Seleciona um folder (carrega seus drawings)
-   */
   selectFolder: (id: string) => Promise<void>;
-  
-  // ==================== DRAWING ACTIONS ====================
-  
-  /**
-   * Carrega drawings do folder atual
-   */
   loadDrawings: () => Promise<void>;
-  
-  /**
-   * Cria um novo drawing
-   */
-  createDrawing: (name: string, description?: string) => Promise<Drawing>;
-  
-  /**
-   * Carrega um drawing no canvas
-   */
+  createDrawing: (name: string) => Promise<Drawing>;
   loadDrawing: (id: string) => Promise<void>;
-  
-  
-  /**
-   * Deleta um drawing
-   */
+  saveCurrentDrawing: (scene: DrawingScene) => Promise<Drawing>;
   deleteDrawing: (id: string) => Promise<void>;
-  
-  /**
-   * Duplica um drawing
-   */
   duplicateDrawing: (id: string) => Promise<void>;
-  
-  /**
-   * Move drawing para outro folder
-   */
   moveDrawing: (drawingId: string, targetFolderId: string) => Promise<void>;
-  
-  /**
-   * Renomeia o drawing atual
-   */
   renameCurrentDrawing: (newName: string) => Promise<void>;
-  
-  // ==================== BRANCH ACTIONS ====================
-  
-  /**
-   * Troca de branch
-   */
-  switchBranch: (newBranch: string) => Promise<void>;
-  
-  // ==================== UTILITY ====================
-  
-  /**
-   * Limpa erro
-   */
   clearError: () => void;
-  
-  /**
-   * Inicializa o store (carrega folders, etc)
-   */
   initialize: () => Promise<void>;
 }
 
-/**
- * Hook do Zustand Store
- */
-export const useDrawingStore = create<DrawingStoreState>()(
-  devtools(
-    persist(
-      (set, get) => ({
-        // ==================== INITIAL STATE ====================
-        
-        folders: [],
-        currentFolderId: null,
-        drawings: [],
-        currentDrawing: null,
-        branch: "main",
-        syncStatus: "idle",
-        isLoading: false,
-        error: null,
-        
-        // ==================== FOLDER ACTIONS ====================
-        
-        loadFolders: async () => {
-          set({ isLoading: true, error: null });
-          
-          try {
-            const result = await client.LIST_FOLDERS({ branch: get().branch });
-            
-            set({
-              folders: result.folders || [],
-              isLoading: false,
-            });
-            
-            // Se não há folder selecionado, selecionar o default
-            if (!get().currentFolderId && result.folders.length > 0) {
-              const defaultFolder = result.folders.find((f: Folder) => f.isDefault);
-              if (defaultFolder) {
-                await get().selectFolder(defaultFolder.id);
-              }
-            }
-          } catch (error) {
-            set({
-              error: `Erro ao carregar folders: ${error}`,
-              isLoading: false,
-            });
-          }
-        },
-        
-        createFolder: async (name: string, emoji: string) => {
-          set({ isLoading: true, error: null });
-          
-          try {
-            const result = await client.CREATE_FOLDER({
-              name,
-              emoji,
-              branch: get().branch,
-            });
-            
-            // Recarregar folders
-            await get().loadFolders();
-            
-            set({ isLoading: false });
-            
-            return result.folder;
-          } catch (error) {
-            set({
-              error: `Erro ao criar folder: ${error}`,
-              isLoading: false,
-            });
-            throw error;
-          }
-        },
-        
-        updateFolder: async (id: string, name: string, emoji: string) => {
-          set({ isLoading: true, error: null });
-          
-          try {
-            await client.UPDATE_FOLDER({
-              folderId: id,
-              name,
-              emoji,
-              branch: get().branch,
-            });
-            
-            // Recarregar folders
-            await get().loadFolders();
-            
-            set({ isLoading: false });
-          } catch (error) {
-            set({
-              error: `Erro ao atualizar folder: ${error}`,
-              isLoading: false,
-            });
-            throw error;
-          }
-        },
-        
-        deleteFolder: async (id: string) => {
-          set({ isLoading: true, error: null });
-          
-          try {
-            await client.DELETE_FOLDER({
-              folderId: id,
-              branch: get().branch,
-            });
-            
-            // Se era o folder atual, limpar
-            if (get().currentFolderId === id) {
-              set({
-                currentFolderId: null,
-                drawings: [],
-                currentDrawing: null,
-              });
-            }
-            
-            // Recarregar folders
-            await get().loadFolders();
-            
-            set({ isLoading: false });
-          } catch (error) {
-            set({
-              error: `Erro ao deletar folder: ${error}`,
-              isLoading: false,
-            });
-            throw error;
-          }
-        },
-        
-        selectFolder: async (id: string) => {
-          set({
-            currentFolderId: id,
-            isLoading: true,
-            error: null,
-          });
-          
-          try {
-            // Carregar drawings do folder
-            const result = await client.LIST_DRAWINGS({
-              folderId: id,
-              branch: get().branch,
-            });
-            
-            set({
-              drawings: result.drawings || [],
-              isLoading: false,
-            });
-          } catch (error) {
-            set({
-              error: `Erro ao carregar drawings: ${error}`,
-              isLoading: false,
-            });
-          }
-        },
-        
-        // ==================== DRAWING ACTIONS ====================
-        
-        loadDrawings: async () => {
-          const { currentFolderId, branch } = get();
-          
-          if (!currentFolderId) return;
-          
-          set({ isLoading: true, error: null });
-          
-          try {
-            const result = await client.LIST_DRAWINGS({
-              folderId: currentFolderId,
-              branch,
-            });
-            
-            set({
-              drawings: result.drawings || [],
-              isLoading: false,
-            });
-          } catch (error) {
-            set({
-              error: `Erro ao carregar drawings: ${error}`,
-              isLoading: false,
-            });
-          }
-        },
-        
-        createDrawing: async (name: string, description?: string) => {
-          const { currentFolderId, branch } = get();
-          
-          if (!currentFolderId) {
-            throw new Error("Nenhum folder selecionado");
-          }
-          
-          set({ isLoading: true, error: null });
-          
-          try {
-            const result = await client.CREATE_DRAWING({
-              name,
-              description,
-              folderId: currentFolderId,
-              branch,
-            });
-            
-            // Recarregar drawings
-            await get().loadDrawings();
-            
-            // Carregar o novo drawing no canvas
-            await get().loadDrawing(result.drawing.id);
-            
-            set({ isLoading: false });
-            
-            return result.drawing;
-          } catch (error) {
-            set({
-              error: `Erro ao criar drawing: ${error}`,
-              isLoading: false,
-            });
-            throw error;
-          }
-        },
-        
-        loadDrawing: async (id: string) => {
-          set({ syncStatus: "loading", error: null });
-          
-          try {
-            const result = await client.GET_DRAWING({
-              drawingId: id,
-              branch: get().branch,
-            });
-            
-            if (!result.drawing) {
-              throw new Error("Drawing não encontrado");
-            }
-            
-            set({
-              currentDrawing: result.drawing,
-              syncStatus: "idle",
-            });
-          } catch (error) {
-            set({
-              error: `Erro ao carregar drawing: ${error}`,
-              syncStatus: "error",
-            });
-            throw error;
-          }
-        },
-        
-        
-        deleteDrawing: async (id: string) => {
-          set({ isLoading: true, error: null });
-          
-          try {
-            await client.DELETE_DRAWING({
-              drawingId: id,
-              branch: get().branch,
-            });
-            
-            // Se era o drawing atual, limpar
-            if (get().currentDrawing?.id === id) {
-              set({ currentDrawing: null });
-            }
-            
-            // Recarregar drawings
-            await get().loadDrawings();
-            
-            set({ isLoading: false });
-          } catch (error) {
-            set({
-              error: `Erro ao deletar drawing: ${error}`,
-              isLoading: false,
-            });
-            throw error;
-          }
-        },
-        
-        duplicateDrawing: async (id: string) => {
-          set({ isLoading: true, error: null });
-          
-          try {
-            await client.DUPLICATE_DRAWING({
-              drawingId: id,
-              branch: get().branch,
-            });
-            
-            // Recarregar drawings
-            await get().loadDrawings();
-            
-            set({ isLoading: false });
-          } catch (error) {
-            set({
-              error: `Erro ao duplicar drawing: ${error}`,
-              isLoading: false,
-            });
-            throw error;
-          }
-        },
-        
-        moveDrawing: async (drawingId: string, targetFolderId: string) => {
-          set({ isLoading: true, error: null });
-          
-          try {
-            await client.MOVE_DRAWING_TO_FOLDER({
-              drawingId,
-              targetFolderId,
-              branch: get().branch,
-            });
-            
-            // Recarregar drawings do folder atual
-            await get().loadDrawings();
-            
-            set({ isLoading: false });
-          } catch (error) {
-            set({
-              error: `Erro ao mover drawing: ${error}`,
-              isLoading: false,
-            });
-            throw error;
-          }
-        },
-        
-        renameCurrentDrawing: async (newName: string) => {
-          const { currentDrawing, branch } = get();
-          
-          if (!currentDrawing) {
-            throw new Error("Nenhum drawing aberto");
-          }
-          
-          set({ isLoading: true, error: null });
-          
-          try {
-            await client.UPDATE_DRAWING({
-              drawingId: currentDrawing.id,
-              name: newName,
-              branch,
-            });
-            
-            // Atualizar drawing atual
-            set({
-              currentDrawing: {
-                ...currentDrawing,
-                name: newName,
-              },
-              isLoading: false,
-            });
-            
-            // Recarregar lista
-            await get().loadDrawings();
-          } catch (error) {
-            set({
-              error: `Erro ao renomear drawing: ${error}`,
-              isLoading: false,
-            });
-            throw error;
-          }
-        },
-        
-        // ==================== BRANCH ACTIONS ====================
-        
-        switchBranch: async (newBranch: string) => {
-          set({
-            branch: newBranch,
-            folders: [],
-            drawings: [],
-            currentFolderId: null,
-            currentDrawing: null,
-          });
-          
-          // Recarregar tudo
-          await get().initialize();
-        },
-        
-        // ==================== UTILITY ====================
-        
-        clearError: () => {
-          set({ error: null });
-        },
-        
-        initialize: async () => {
-          // Garantir folder default
-          try {
-            await client.ENSURE_DEFAULT_FOLDER({ branch: get().branch });
-          } catch (error) {
-            console.error("Erro ao garantir folder default:", error);
-          }
-          
-          // Carregar folders
-          await get().loadFolders();
-        },
-      }),
-      {
-        name: "drawing-storage",
-        // Persistir apenas branch atual
-        partialize: (state) => ({
-          branch: state.branch,
-        }),
+const drawingListPath = (folderId: string) =>
+  `/api/drawings?folderId=${encodeURIComponent(folderId)}`;
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export const useDrawingStore = create<DrawingStoreState>((set, get) => ({
+  folders: [],
+  currentFolderId: null,
+  drawings: [],
+  currentDrawing: null,
+  syncStatus: "idle",
+  isLoading: false,
+  error: null,
+
+  loadFolders: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const { folders } = await requestJson<{ folders: Folder[] }>("/api/folders");
+      set({ folders, isLoading: false });
+      if (!get().currentFolderId) {
+        const defaultFolder = folders.find((folder) => folder.isDefault) ?? folders[0];
+        if (defaultFolder) await get().selectFolder(defaultFolder.id);
       }
-    ),
-    { name: "DrawingStore" }
-  )
-);
+    } catch (error) {
+      set({ error: `Erro ao carregar folders: ${errorMessage(error)}`, isLoading: false });
+    }
+  },
+
+  createFolder: async (name, emoji) => {
+    set({ isLoading: true, error: null });
+    try {
+      const { folder } = await requestJson<{ folder: Folder }>("/api/folders", {
+        method: "POST",
+        body: JSON.stringify({ name, emoji }),
+      });
+      await get().loadFolders();
+      return folder;
+    } catch (error) {
+      set({ error: `Erro ao criar folder: ${errorMessage(error)}`, isLoading: false });
+      throw error;
+    }
+  },
+
+  updateFolder: async (id, name, emoji) => {
+    set({ isLoading: true, error: null });
+    try {
+      await requestJson(`/api/folders/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        body: JSON.stringify({ name, emoji }),
+      });
+      await get().loadFolders();
+    } catch (error) {
+      set({ error: `Erro ao atualizar folder: ${errorMessage(error)}`, isLoading: false });
+      throw error;
+    }
+  },
+
+  deleteFolder: async (id) => {
+    set({ isLoading: true, error: null });
+    try {
+      await requestJson(`/api/folders/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (get().currentFolderId === id) {
+        set({ currentFolderId: null, drawings: [], currentDrawing: null });
+      }
+      await get().loadFolders();
+    } catch (error) {
+      set({ error: `Erro ao deletar folder: ${errorMessage(error)}`, isLoading: false });
+      throw error;
+    }
+  },
+
+  selectFolder: async (id) => {
+    set({ currentFolderId: id, isLoading: true, error: null });
+    try {
+      const { drawings } = await requestJson<{ drawings: DrawingSummary[] }>(drawingListPath(id));
+      set({ drawings, isLoading: false });
+    } catch (error) {
+      set({ error: `Erro ao carregar drawings: ${errorMessage(error)}`, isLoading: false });
+    }
+  },
+
+  loadDrawings: async () => {
+    const { currentFolderId } = get();
+    if (!currentFolderId) return;
+    await get().selectFolder(currentFolderId);
+  },
+
+  createDrawing: async (name) => {
+    const { currentFolderId } = get();
+    if (!currentFolderId) throw new Error("Nenhum folder selecionado");
+    set({ isLoading: true, error: null });
+    try {
+      const { drawing } = await requestJson<{ drawing: Drawing }>("/api/drawings", {
+        method: "POST",
+        body: JSON.stringify({ folderId: currentFolderId, name }),
+      });
+      await get().loadDrawings();
+      await get().loadDrawing(drawing.id);
+      set({ isLoading: false });
+      return drawing;
+    } catch (error) {
+      set({ error: `Erro ao criar drawing: ${errorMessage(error)}`, isLoading: false });
+      throw error;
+    }
+  },
+
+  loadDrawing: async (id) => {
+    set({ syncStatus: "loading", error: null });
+    try {
+      const { drawing } = await requestJson<{ drawing: Drawing }>(`/api/drawings/${encodeURIComponent(id)}`);
+      set({ currentDrawing: drawing, syncStatus: "idle" });
+    } catch (error) {
+      set({ error: `Erro ao carregar drawing: ${errorMessage(error)}`, syncStatus: "error" });
+      throw error;
+    }
+  },
+
+  saveCurrentDrawing: async (scene) => {
+    const currentDrawing = get().currentDrawing;
+    if (!currentDrawing) throw new Error("Nenhum drawing aberto");
+    set({ syncStatus: "saving", error: null });
+    try {
+      const { drawing } = await requestJson<{ drawing: Drawing }>(
+        `/api/drawings/${encodeURIComponent(currentDrawing.id)}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ expectedVersion: currentDrawing.version, scene }),
+        },
+      );
+      set((state) => ({
+        currentDrawing: drawing,
+        drawings: state.drawings.map((item) => item.id === drawing.id ? toSummary(drawing) : item),
+        syncStatus: "idle",
+      }));
+      return drawing;
+    } catch (error) {
+      set({ error: errorMessage(error), syncStatus: "error" });
+      throw error;
+    }
+  },
+
+  deleteDrawing: async (id) => {
+    set({ isLoading: true, error: null });
+    try {
+      await requestJson(`/api/drawings/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (get().currentDrawing?.id === id) set({ currentDrawing: null });
+      await get().loadDrawings();
+    } catch (error) {
+      set({ error: `Erro ao deletar drawing: ${errorMessage(error)}`, isLoading: false });
+      throw error;
+    }
+  },
+
+  duplicateDrawing: async (id) => {
+    set({ isLoading: true, error: null });
+    try {
+      const { drawing } = await requestJson<{ drawing: Drawing }>(`/api/drawings/${encodeURIComponent(id)}`);
+      await requestJson("/api/drawings", {
+        method: "POST",
+        body: JSON.stringify({ folderId: drawing.folderId, name: `${drawing.name} (copy)`, scene: drawing.scene }),
+      });
+      await get().loadDrawings();
+    } catch (error) {
+      set({ error: `Erro ao duplicar drawing: ${errorMessage(error)}`, isLoading: false });
+      throw error;
+    }
+  },
+
+  moveDrawing: async (drawingId, targetFolderId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const { drawing } = await requestJson<{ drawing: Drawing }>(`/api/drawings/${encodeURIComponent(drawingId)}`);
+      await requestJson(`/api/drawings/${encodeURIComponent(drawingId)}`, {
+        method: "PUT",
+        body: JSON.stringify({ expectedVersion: drawing.version, folderId: targetFolderId }),
+      });
+      await get().loadDrawings();
+    } catch (error) {
+      set({ error: `Erro ao mover drawing: ${errorMessage(error)}`, isLoading: false });
+      throw error;
+    }
+  },
+
+  renameCurrentDrawing: async (name) => {
+    const currentDrawing = get().currentDrawing;
+    if (!currentDrawing) throw new Error("Nenhum drawing aberto");
+    set({ isLoading: true, error: null });
+    try {
+      const { drawing } = await requestJson<{ drawing: Drawing }>(
+        `/api/drawings/${encodeURIComponent(currentDrawing.id)}`,
+        { method: "PUT", body: JSON.stringify({ expectedVersion: currentDrawing.version, name }) },
+      );
+      set((state) => ({ currentDrawing: drawing, drawings: state.drawings.map((item) => item.id === drawing.id ? toSummary(drawing) : item), isLoading: false }));
+    } catch (error) {
+      set({ error: `Erro ao renomear drawing: ${errorMessage(error)}`, isLoading: false });
+      throw error;
+    }
+  },
+
+  clearError: () => set({ error: null }),
+  initialize: async () => get().loadFolders(),
+}));
+
+function toSummary(drawing: Drawing): DrawingSummary {
+  const { scene: _scene, ...summary } = drawing;
+  return summary;
+}

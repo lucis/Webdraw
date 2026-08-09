@@ -75,19 +75,6 @@ export const useDrawings = () => {
 
 
 /**
- * Hook para branch management
- */
-export const useBranch = () => {
-  const branch = useDrawingStore((state) => state.branch);
-  const switchBranch = useDrawingStore((state) => state.switchBranch);
-  
-  return {
-    branch,
-    switchBranch,
-  };
-};
-
-/**
  * Hook para inicializar o store
  * Deve ser usado no componente raiz do app
  */
@@ -121,5 +108,4 @@ export const useCurrentDrawing = () => {
     hasDrawing: currentDrawing !== null,
   };
 };
-
 

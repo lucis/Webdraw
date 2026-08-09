@@ -7,8 +7,8 @@
  * - Header com user button
  */
 
-import { createRoute, type RootRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { createRoute, type RootRoute, useSearch } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
 import { LeftSidebar } from "../components/LeftSidebar";
 import { SidebarToggle } from "../components/SidebarToggle";
 import { ExcalidrawCanvas } from "../components/canvas/ExcalidrawCanvas";
@@ -20,8 +20,27 @@ import LoggedProvider from "../components/logged-provider";
 function AppPage() {
   const { isInitialized } = useInitializeDrawingStore();
   const syncStatus = useDrawingStore((state) => state.syncStatus);
+  const currentDrawing = useDrawingStore((state) => state.currentDrawing);
+  const loadDrawing = useDrawingStore((state) => state.loadDrawing);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  
+
+  // Pegar drawingId da URL
+  const search = useSearch({ from: "/app" });
+  const drawingIdFromUrl = search.drawingId;
+
+  // Carregar drawing da URL automaticamente
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    // Se tem drawingId na URL e não há desenho carregado (ou é diferente)
+    if (drawingIdFromUrl && currentDrawing?.id !== drawingIdFromUrl) {
+      console.log('🔗 Carregando drawing da URL:', drawingIdFromUrl);
+      loadDrawing(drawingIdFromUrl).catch((error) => {
+        console.error('❌ Erro ao carregar drawing da URL:', error);
+      });
+    }
+  }, [isInitialized, drawingIdFromUrl, currentDrawing?.id, loadDrawing]);
+
   if (!isInitialized) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-slate-900">

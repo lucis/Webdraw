@@ -10,7 +10,6 @@ import HomePage from "./routes/home.tsx";
 import AboutPage from "./routes/about.tsx";
 import AppPage from "./routes/app.tsx";
 import CanvasPage from "./routes/canvas.tsx";
-import DebugToolsPage from "./routes/debug-tools.tsx";
 import ExcalidrawTestPage from "./routes/excalidraw.tsx";
 import { Toaster } from "sonner";
 
@@ -26,7 +25,6 @@ const routeTree = rootRoute.addChildren([
   AboutPage(rootRoute),
   AppPage(rootRoute),
   CanvasPage(rootRoute),
-  DebugToolsPage(rootRoute),
   ExcalidrawTestPage(rootRoute),
 ]);
 

@@ -13,7 +13,6 @@ import { cn } from "../../lib/utils";
 interface DrawingNavItemProps {
   name: string;
   updatedAt: number;
-  elementCount: number;
   isActive: boolean;
   onClick: () => void;
 }
@@ -21,7 +20,6 @@ interface DrawingNavItemProps {
 const DrawingNavItem = ({ 
   name, 
   updatedAt, 
-  elementCount,
   isActive, 
   onClick 
 }: DrawingNavItemProps) => {
@@ -42,18 +40,10 @@ const DrawingNavItem = ({
         "focus:outline-none focus:ring-2 focus:ring-blue-500"
       )}
     >
-      {/* Top row: name + element count */}
+      {/* Drawing name */}
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium truncate flex-1">
           {name}
-        </span>
-        <span className={cn(
-          "text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 ml-2",
-          isActive 
-            ? "bg-blue-700 text-blue-100" 
-            : "bg-slate-700 text-slate-400 group-hover:bg-slate-600"
-        )}>
-          {elementCount}
         </span>
       </div>
       
@@ -227,7 +217,6 @@ export const DrawingNavigation = () => {
                 key={drawing.id}
                 name={drawing.name}
                 updatedAt={drawing.updatedAt}
-                elementCount={drawing.elementCount}
                 isActive={currentDrawing?.id === drawing.id}
                 onClick={() => loadDrawing(drawing.id)}
               />

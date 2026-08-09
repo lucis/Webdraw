@@ -7,11 +7,9 @@
  * - Resources Section (cards draggable para canvas)
  */
 
-import { GitBranch } from "lucide-react";
 import { FolderNavigation } from "./folders/FolderNavigation";
 import { DrawingNavigation } from "./drawings/DrawingNavigation";
 import { ResourcesSection } from "./resources/ResourcesSection";
-import { useBranch } from "../hooks/useDrawingManagement";
 import { cn } from "../lib/utils";
 
 interface LeftSidebarProps {
@@ -19,8 +17,6 @@ interface LeftSidebarProps {
 }
 
 export const LeftSidebar = ({ isOpen }: LeftSidebarProps) => {
-  const { branch } = useBranch();
-  
   return (
     <div 
       className={cn(
@@ -34,20 +30,14 @@ export const LeftSidebar = ({ isOpen }: LeftSidebarProps) => {
       )}
     >
       {/* Header - Fixed height */}
-      <div className="flex-shrink-0 h-24 p-4 border-b border-slate-700">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="flex-shrink-0 h-16 p-4 border-b border-slate-700">
+        <div className="flex items-center gap-2">
           <img
             src="/logo.png"
             alt="Webdraw"
             className="w-6 h-6 object-contain"
           />
           <h1 className="text-lg font-bold text-white">Webdraw</h1>
-        </div>
-        
-        {/* Branch Selector - Simplified */}
-        <div className="flex items-center gap-2 px-2 py-1 bg-slate-800 rounded text-xs font-mono text-slate-300">
-          <GitBranch className="w-3 h-3" />
-          <span>{branch}</span>
         </div>
       </div>
       
@@ -71,17 +61,7 @@ export const LeftSidebar = ({ isOpen }: LeftSidebarProps) => {
         
       </div>
       
-      {/* Footer - Fixed height */}
-      <div className="flex-shrink-0 h-12 p-3 border-t border-slate-700 flex items-center justify-center">
-        <a
-          href="/debug-tools"
-          className="text-xs text-slate-500 hover:text-slate-400 transition-colors"
-        >
-          Debug Tools
-        </a>
-      </div>
     </div>
   );
 };
-
 
