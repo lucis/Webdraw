@@ -113,6 +113,25 @@ describe("drawing store HTTP API", () => {
       error: "The drawing was updated elsewhere",
     });
   });
+
+  it("does not replace a newly selected drawing when an earlier autosave finishes", async () => {
+    const { useDrawingStore } = await import("./drawing-store");
+    const selectedDrawing = { ...drawing, id: "drawing-2", name: "New selection", version: 8 };
+    let completeSave: (value: unknown) => void;
+    requestJson.mockReturnValue(new Promise((resolve) => { completeSave = resolve; }));
+    useDrawingStore.setState({ currentDrawing: drawing, drawings: [omitScene(drawing), omitScene(selectedDrawing)] });
+
+    const save = useDrawingStore.getState().saveCurrentDrawing({ elements: [{ id: "element-1" }], appState: {}, files: {} });
+    useDrawingStore.setState({ currentDrawing: selectedDrawing, syncStatus: "loading" });
+    completeSave!({ drawing: { ...drawing, version: 4, updatedAt: 2 } });
+
+    await save;
+
+    expect(useDrawingStore.getState()).toMatchObject({
+      currentDrawing: selectedDrawing,
+      syncStatus: "loading",
+    });
+  });
 });
 
 function omitScene(value: typeof drawing) {

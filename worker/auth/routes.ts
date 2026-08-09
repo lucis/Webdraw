@@ -115,6 +115,9 @@ function safeNext(value: string | undefined, appOrigin: string): string {
   try {
     const destination = new URL(value, appOrigin);
     if (destination.origin !== appOrigin) return "/";
+    if (destination.pathname === "/canvas") {
+      return `/app${destination.search}${destination.hash}`;
+    }
     return `${destination.pathname}${destination.search}${destination.hash}`;
   } catch {
     return "/";

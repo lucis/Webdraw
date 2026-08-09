@@ -45,13 +45,18 @@ Abra `http://localhost:5173`. O login começa em `/api/auth/login`; a chave
 OpenRouter recebida no callback é tratada pelo Worker e não é exposta ao
 navegador.
 
+## Limites de cenas
+
+Cada cena serializada é limitada a 1.000.000 bytes UTF-8 e cada requisição de
+criação ou atualização de desenho a 1.100.000 bytes. Imagens e outros binários
+devem ser mantidos fora da cena no D1 (por exemplo, no R2), com apenas suas
+referências na cena.
+
 ## Publicação no Cloudflare
 
-Antes da primeira publicação, aplique as migrações ao banco remoto:
-
-```bash
-npx wrangler d1 migrations apply DB --remote
-```
+O workflow de produção aplica as migrações remotas do D1 com as mesmas
+credenciais Cloudflare, antes de publicar o Worker. O workflow de preview não
+aplica migrações remotas.
 
 Defina os valores de produção de forma interativa, sem colocá-los em arquivos
 versionados:

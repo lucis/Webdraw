@@ -98,7 +98,7 @@ describe("OpenRouter OAuth routes", () => {
     );
 
     expect(callback.status).toBe(302);
-    expect(callback.headers.get("location")).toBe("/canvas");
+    expect(callback.headers.get("location")).toBe("/app");
     expect(callback.headers.get("set-cookie")).toContain("webdraw_session=");
     expect(callback.headers.get("set-cookie")).toContain("Max-Age=2592000");
     expect(callback.headers.get("set-cookie")).toContain("HttpOnly");

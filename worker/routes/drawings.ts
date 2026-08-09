@@ -6,6 +6,8 @@ import {
   getDrawingResponseSchema,
   listDrawingsQuerySchema,
   listDrawingsResponseSchema,
+  MAX_DRAWING_REQUEST_BYTES,
+  MAX_DRAWING_SCENE_BYTES,
   updateDrawingRequestSchema,
   updateDrawingResponseSchema,
 } from "../../shared/contracts/drawings";
@@ -103,21 +105,65 @@ function parseId(params: unknown): string {
 }
 
 async function parseBody<TSchema extends z.ZodTypeAny>(
-  request: { json<T = unknown>(): Promise<T> },
+  request: { raw: Request; header(name: string): string | undefined },
   schema: TSchema,
 ): Promise<z.infer<TSchema>> {
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
+    body = JSON.parse(await readBody(request));
+  } catch (error) {
+    if (error instanceof AppError) throw error;
     throw validationError();
   }
 
   const parsed = schema.safeParse(body);
   if (!parsed.success) throw validationError(parsed.error.flatten());
+  if ("scene" in parsed.data && parsed.data.scene && sceneByteLength(parsed.data.scene) > MAX_DRAWING_SCENE_BYTES) {
+    throw payloadTooLarge("Drawing scene", MAX_DRAWING_SCENE_BYTES);
+  }
   return parsed.data;
+}
+
+async function readBody(request: { raw: Request; header(name: string): string | undefined }): Promise<string> {
+  const contentLength = Number(request.header("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_DRAWING_REQUEST_BYTES) {
+    throw payloadTooLarge("Drawing request", MAX_DRAWING_REQUEST_BYTES);
+  }
+
+  const body = request.raw.body;
+  if (!body) return "";
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.byteLength;
+    if (bytes > MAX_DRAWING_REQUEST_BYTES) {
+      await reader.cancel();
+      throw payloadTooLarge("Drawing request", MAX_DRAWING_REQUEST_BYTES);
+    }
+    chunks.push(value);
+  }
+
+  const data = new Uint8Array(bytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    data.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(data);
+}
+
+function sceneByteLength(scene: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(scene)).byteLength;
 }
 
 function validationError(details?: unknown): AppError {
   return new AppError(400, "validation_failed", "Invalid request", details);
+}
+
+function payloadTooLarge(subject: string, maxBytes: number): AppError {
+  return new AppError(413, "validation_failed", `${subject} exceeds the ${maxBytes} byte limit`, { maxBytes });
 }

@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+/**
+ * D1 limits a row value to 2,000,000 bytes. Scenes are capped well below
+ * that threshold so serialized Excalidraw files cannot cause a late D1 error.
+ */
+export const MAX_DRAWING_SCENE_BYTES = 1_000_000;
+export const MAX_DRAWING_REQUEST_BYTES = 1_100_000;
+
 export const drawingSceneSchema = z.object({
   elements: z.array(z.unknown()),
   appState: z.record(z.unknown()),

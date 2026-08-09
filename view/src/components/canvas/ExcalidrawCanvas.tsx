@@ -9,7 +9,7 @@
 
 import { Excalidraw } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
-import { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useDrawingStore } from "../../stores/drawing-store";
 
@@ -70,6 +70,9 @@ export const ExcalidrawCanvas = () => {
     console.log('✅ onChange - Agendando save:', {
       drawingId: currentDrawing.id,
     });
+
+    const drawingId = currentDrawing.id;
+    const expectedVersion = currentDrawing.version;
     
     // Cancelar timeout anterior
     if (saveTimeoutRef.current) {
@@ -78,8 +81,16 @@ export const ExcalidrawCanvas = () => {
     
     // Agendar save com debounce de 2s
     saveTimeoutRef.current = setTimeout(async () => {
+      const selectedDrawing = useDrawingStore.getState().currentDrawing;
+      if (!selectedDrawing || selectedDrawing.id !== drawingId || selectedDrawing.version !== expectedVersion) {
+        return;
+      }
+
       try {
         const savedDrawing = await saveCurrentDrawing(scene);
+        if (useDrawingStore.getState().currentDrawing?.id !== drawingId) {
+          return;
+        }
         lastSavedSceneRef.current = sceneFingerprint(savedDrawing.scene);
         
         console.log('✅ Salvo!');
@@ -93,8 +104,11 @@ export const ExcalidrawCanvas = () => {
   }, [currentDrawing, saveCurrentDrawing]);
 
   useEffect(() => () => {
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-  }, []);
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+  }, [currentDrawing?.id, currentDrawing?.version]);
   
   // Empty state quando não há drawing
   if (!currentDrawing) {

@@ -165,14 +165,20 @@ export const useDrawingStore = create<DrawingStoreState>((set, get) => ({
           body: JSON.stringify({ expectedVersion: currentDrawing.version, scene }),
         },
       );
-      set((state) => ({
-        currentDrawing: drawing,
-        drawings: state.drawings.map((item) => item.id === drawing.id ? toSummary(drawing) : item),
-        syncStatus: "idle",
-      }));
+      set((state) => {
+        const stillCurrent = state.currentDrawing?.id === currentDrawing.id
+          && state.currentDrawing.version === currentDrawing.version;
+        return {
+          currentDrawing: stillCurrent ? drawing : state.currentDrawing,
+          drawings: state.drawings.map((item) => item.id === drawing.id ? toSummary(drawing) : item),
+          syncStatus: stillCurrent ? "idle" : state.syncStatus,
+        };
+      });
       return drawing;
     } catch (error) {
-      set({ error: errorMessage(error), syncStatus: "error" });
+      if (get().currentDrawing?.id === currentDrawing.id && get().currentDrawing.version === currentDrawing.version) {
+        set({ error: errorMessage(error), syncStatus: "error" });
+      }
       throw error;
     }
   },

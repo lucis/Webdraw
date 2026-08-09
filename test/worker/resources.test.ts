@@ -260,4 +260,47 @@ describe("folder and drawing API routes", () => {
     expect(foreign.status).toBe(404);
     await expect(foreign.json()).resolves.toMatchObject({ error: { code: "not_found" } });
   });
+
+  it("rejects a serialized drawing scene above the one-million-byte storage limit", async () => {
+    const user = await createUser();
+    const folders = await authenticatedRequest(user.id, "/api/folders");
+    const folder = (await folders.json() as { folders: Array<{ id: string }> }).folders[0];
+    const oversizedScene = {
+      elements: [],
+      appState: {},
+      files: { image: { dataURL: "x".repeat(1_000_001) } },
+    };
+
+    const response = await authenticatedRequest(user.id, "/api/drawings", {
+      method: "POST",
+      body: JSON.stringify({ folderId: folder.id, name: "Grande", scene: oversizedScene }),
+    });
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "validation_failed",
+        message: "Drawing scene exceeds the 1000000 byte limit",
+        details: { maxBytes: 1_000_000 },
+      },
+    });
+  });
+
+  it("rejects a drawing request body above the 1,100,000-byte transport limit", async () => {
+    const user = await createUser();
+
+    const response = await authenticatedRequest(user.id, "/api/drawings", {
+      method: "POST",
+      body: JSON.stringify({ payload: "x".repeat(1_100_001) }),
+    });
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "validation_failed",
+        message: "Drawing request exceeds the 1100000 byte limit",
+        details: { maxBytes: 1_100_000 },
+      },
+    });
+  });
 });
