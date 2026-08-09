@@ -6,7 +6,7 @@ export default defineConfig({
     cloudflareTest(async () => ({
       wrangler: { configPath: "./wrangler.jsonc" },
       miniflare: {
-        compatibilityDate: "2026-08-08",
+        compatibilityDate: "2026-08-09",
         bindings: {
           TEST_MIGRATIONS: await readD1Migrations("migrations"),
         },
