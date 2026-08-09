@@ -28,7 +28,9 @@ export async function requestJson<TOutput>(
 
   if (init.body != null) {
     const headers = new Headers(init.headers);
-    headers.set("Content-Type", "application/json");
+    if (!headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
     requestInit.headers = headers;
   }
 

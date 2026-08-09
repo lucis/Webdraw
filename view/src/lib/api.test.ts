@@ -44,6 +44,21 @@ describe("requestJson", () => {
     expect(new Headers(requestInit.headers).get("Content-Type")).toBe("application/json");
   });
 
+  it("preserves a caller-provided content type for a request body", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response("{}")));
+    globalThis.fetch = fetchMock;
+
+    await requestJson("/api/upload", {
+      body: "--webdraw-boundary--",
+      headers: { "content-type": "multipart/form-data; boundary=webdraw-boundary" },
+    });
+
+    const [, requestInit] = fetchMock.mock.calls[0];
+    expect(new Headers(requestInit.headers).get("Content-Type")).toBe(
+      "multipart/form-data; boundary=webdraw-boundary",
+    );
+  });
+
   it("normalizes a 401 API error", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(
