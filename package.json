@@ -1,19 +1,22 @@
 {
   "name": "webdraw",
   "version": "1.0.0",
-  "description": "Deco Application built on top of Cloudflare Workers and React",
+  "description": "Webdraw, built with Cloudflare Workers and React",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "deco dev --vite",
-    "configure": "deco configure",
-    "gen": "deco gen --output=shared/deco.gen.ts",
-    "deploy": "npm run build && deco deploy ./dist/server",
+    "dev": "vite",
     "build": "vite build",
-    "db:generate": "drizzle-kit generate"
+    "deploy": "npm run build && wrangler deploy",
+    "typecheck": "tsc -b",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:worker": "vitest run --config vitest.worker.config.ts",
+    "cf:typegen": "wrangler types",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "postinstall": "patch-package"
   },
   "dependencies": {
-    "@deco/workers-runtime": "npm:@jsr/deco__workers-runtime@0.21.1",
     "@excalidraw/excalidraw": "^0.18.0",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-popover": "^1.1.15",
@@ -24,6 +27,7 @@
     "@tanstack/react-router-devtools": "^1.121.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "hono": "^4.13.1",
     "lucide-react": "^0.476.0",
     "next-themes": "^0.4.6",
     "react": "^19.0.0",
@@ -37,15 +41,27 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.13.4",
+    "@cloudflare/vitest-pool-workers": "^0.20.3",
+    "@eslint/js": "^9.39.4",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.3",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.2.0",
-    "deco-cli": "^0.22.0",
     "drizzle-kit": "^0.31.4",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "jsdom": "^27.0.1",
+    "patch-package": "^8.0.1",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.66.0",
     "vite": "^6.1.0",
+    "vitest": "^4.1.0",
     "wrangler": "^4.28.0"
+  },
+  "overrides": {
+    "workerd": "1.20260809.1"
   },
   "engines": {
     "node": ">=22.0.0"

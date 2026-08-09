@@ -1,0 +1,6 @@
+# Wrangler emits this declaration file verbatim, including a few trailing spaces.
+# Keep generation reproducible while excluding generated whitespace from diff checks.
+worker-configuration.d.ts -whitespace
+
+# patch-package preserves the target file's leading tabs as patch context.
+patches/*.patch -whitespace

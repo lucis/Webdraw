@@ -1,0 +1,13 @@
+diff --git a/node_modules/@cloudflare/vitest-pool-workers/dist/pool/index.mjs b/node_modules/@cloudflare/vitest-pool-workers/dist/pool/index.mjs
+index 7a255c6..8727802 100644
+--- a/node_modules/@cloudflare/vitest-pool-workers/dist/pool/index.mjs
++++ b/node_modules/@cloudflare/vitest-pool-workers/dist/pool/index.mjs
+@@ -60513,7 +60513,7 @@ async function buildProjectWorkerOptions(project, customOptions, main) {
+ 		if (!result.isValid) throw new Error(result.errorMessage);
+ 	}
+ 	const { hasNoNodejsCompatV2Flag, mode } = getNodeCompat(runnerWorker.compatibilityDate, runnerWorker.compatibilityFlags);
+-	if (mode !== "v2") {
++	if (mode !== "v2" && runnerWorker.compatibilityDate < "2026-08-04") {
+ 		if (hasNoNodejsCompatV2Flag) runnerWorker.compatibilityFlags.splice(runnerWorker.compatibilityFlags.indexOf("no_nodejs_compat_v2"), 1);
+ 		runnerWorker.compatibilityFlags.push("nodejs_compat_v2");
+ 	}
