@@ -121,10 +121,22 @@ The initial schema contains these logical tables:
 - `user_id`
 - creation, expiration, and last-used timestamps
 
+### `folders`
+
+- `id`: UUID primary key
+- `user_id`
+- name
+- emoji
+- sort order
+- creation and update timestamps
+
+Each new user receives one default folder. Deleting a non-default folder moves its drawings to the default folder. The default folder cannot be deleted.
+
 ### `drawings`
 
 - `id`: UUID primary key
 - `user_id`
+- `folder_id`
 - name
 - complete Excalidraw scene JSON
 - monotonic version
@@ -304,6 +316,11 @@ GET    /api/me
 
 GET    /api/models
 
+GET    /api/folders
+POST   /api/folders
+PUT    /api/folders/:id
+DELETE /api/folders/:id
+
 GET    /api/drawings
 POST   /api/drawings
 GET    /api/drawings/:id
@@ -396,7 +413,7 @@ The implementation uses test-driven development for behavioral code.
 1. The application builds, runs, and deploys with Vite and Wrangler as a standard Cloudflare Worker.
 2. No production dependency, code path, configuration, deployment workflow, functional asset, or user-facing authentication flow relies on deco.
 3. A user signs in through OpenRouter, receives an opaque server session, and never receives the OpenRouter API key in frontend code or storage.
-4. D1 records are isolated by the authenticated OpenRouter user.
+4. D1 folders, drawings, artifacts, credentials, and sessions are isolated by the authenticated OpenRouter user.
 5. A selected interface drawing produces a validated HTML/Tailwind artifact and an executable embed to its right.
 6. The artifact is stored as one `sourceHtml` document.
 7. Manual source edits create immutable versions.
