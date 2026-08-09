@@ -2,7 +2,8 @@
 
 set -euo pipefail
 
-readonly FORBIDDEN_PATTERN='@deco/|deco-cli|deco dev|deco deploy|/oauth/start|DECONFIG|DECO_CHAT'
+readonly FORBIDDEN_LEGACY_PATTERN='@deco/|deco-cli|deco dev|deco deploy|/oauth/start|DECONFIG|DECO_CHAT'
+readonly FORBIDDEN_BRANDING_PATTERN='(^|[^[:alnum:]_])deco([^[:alnum:]_]|$)'
 readonly CHECK_SCRIPT='scripts/check-no-deco.sh'
 
 cd "$(git rev-parse --show-toplevel)"
@@ -23,12 +24,29 @@ should_scan() {
   esac
 }
 
+is_user_visible_asset() {
+  case "$1" in
+    index.html|public/*|view/*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 found=0
 while IFS= read -r -d '' path; do
   [[ -f "$path" ]] || continue
 
-  if should_scan "$path" && grep -nHE "$FORBIDDEN_PATTERN" -- "$path"; then
-    found=1
+  if should_scan "$path"; then
+    if grep -nHE "$FORBIDDEN_LEGACY_PATTERN" -- "$path"; then
+      found=1
+    fi
+
+    if is_user_visible_asset "$path" && grep -niHE "$FORBIDDEN_BRANDING_PATTERN" -- "$path"; then
+      found=1
+    fi
   fi
 done < <(git ls-files -co --exclude-standard -z)
 
