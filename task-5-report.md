@@ -22,4 +22,8 @@ The OAuth route test was added first and run against the baseline application. I
 
 ## Local configuration
 
-`.dev.vars.example` contains variable names only. No `.dev.vars` content was read, copied, or reported.
+`.dev.vars.example` contains the required variable names and the non-secret local `APP_ORIGIN=http://localhost:5173` default. No `.dev.vars` content was read, copied, or reported.
+
+## Review correction
+
+The local `APP_ORIGIN` example was corrected to `http://localhost:5173`, so copying the template provides a valid origin for the OAuth callback without exposing any credential.
