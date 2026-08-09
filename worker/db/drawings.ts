@@ -17,6 +17,13 @@ export interface CreateDrawingInput {
   scene: DrawingScene;
 }
 
+export interface UpdateDrawingInput {
+  expectedVersion: number;
+  name?: string;
+  folderId?: string;
+  scene?: DrawingScene;
+}
+
 export async function listDrawings(
   db: D1Database,
   userId: string,
@@ -85,17 +92,34 @@ export async function updateDrawing(
   db: D1Database,
   userId: string,
   drawingId: string,
-  expectedVersion: number,
-  scene: DrawingScene,
+  input: UpdateDrawingInput,
 ): Promise<DrawingRow> {
   const drawing = await db
     .prepare(
       `UPDATE drawings
-       SET scene_json = ?, version = version + 1, updated_at = ?
+       SET name = COALESCE(?, name),
+           folder_id = COALESCE(?, folder_id),
+           scene_json = COALESCE(?, scene_json),
+           version = version + 1,
+           updated_at = ?
        WHERE id = ? AND user_id = ? AND version = ?
+         AND (? IS NULL OR EXISTS (
+           SELECT 1 FROM folders WHERE id = ? AND user_id = ?
+         ))
        RETURNING id, user_id, folder_id, name, scene_json, version, created_at, updated_at`,
     )
-    .bind(JSON.stringify(scene), Date.now(), drawingId, userId, expectedVersion)
+    .bind(
+      input.name ?? null,
+      input.folderId ?? null,
+      input.scene === undefined ? null : JSON.stringify(input.scene),
+      Date.now(),
+      drawingId,
+      userId,
+      input.expectedVersion,
+      input.folderId ?? null,
+      input.folderId ?? null,
+      userId,
+    )
     .first<DrawingDatabaseRow>();
 
   if (drawing) {
@@ -107,7 +131,23 @@ export async function updateDrawing(
     .bind(drawingId, userId)
     .first<{ version: number }>();
 
-  throw new RepositoryError(ownedDrawing ? "version_conflict" : "not_found");
+  if (!ownedDrawing) {
+    throw new RepositoryError("not_found");
+  }
+  if (ownedDrawing.version !== input.expectedVersion) {
+    throw new RepositoryError("version_conflict");
+  }
+  if (input.folderId !== undefined) {
+    const folder = await db
+      .prepare("SELECT id FROM folders WHERE id = ? AND user_id = ?")
+      .bind(input.folderId, userId)
+      .first<{ id: string }>();
+    if (!folder) {
+      throw new RepositoryError("not_found");
+    }
+  }
+
+  throw new RepositoryError("version_conflict");
 }
 
 export async function deleteDrawing(db: D1Database, userId: string, drawingId: string): Promise<void> {

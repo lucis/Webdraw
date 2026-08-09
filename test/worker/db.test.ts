@@ -94,7 +94,7 @@ describe("D1 core repositories", () => {
     await expect(updateFolder(env.DB, intruder.id, ownerFolder.id, { name: "Tomado" })).rejects.toMatchObject({ code: "not_found" });
     await expect(deleteFolder(env.DB, intruder.id, ownerFolder.id)).rejects.toMatchObject({ code: "not_found" });
     await expect(getDrawing(env.DB, intruder.id, ownerDrawing.id)).resolves.toBeNull();
-    await expect(updateDrawing(env.DB, intruder.id, ownerDrawing.id, 1, scene)).rejects.toMatchObject({ code: "not_found" });
+    await expect(updateDrawing(env.DB, intruder.id, ownerDrawing.id, { expectedVersion: 1, scene })).rejects.toMatchObject({ code: "not_found" });
     await expect(deleteDrawing(env.DB, intruder.id, ownerDrawing.id)).rejects.toMatchObject({ code: "not_found" });
 
     await expect(getFolder(env.DB, owner.id, ownerFolder.id)).resolves.toMatchObject({ id: ownerFolder.id });
@@ -111,7 +111,7 @@ describe("D1 core repositories", () => {
       scene,
     });
 
-    await expect(updateDrawing(env.DB, user.id, drawing.id, 99, scene)).rejects.toMatchObject({
+    await expect(updateDrawing(env.DB, user.id, drawing.id, { expectedVersion: 99, scene })).rejects.toMatchObject({
       code: "version_conflict",
     });
     await expect(getDrawing(env.DB, user.id, drawing.id)).resolves.toMatchObject({

@@ -171,6 +171,70 @@ describe("folder and drawing API routes", () => {
     expect(remove.status).toBe(204);
   });
 
+  it("renames and moves a drawing to another folder owned by the user", async () => {
+    const user = await createUser();
+    const folders = await authenticatedRequest(user.id, "/api/folders");
+    const sourceFolder = (await folders.json() as { folders: Array<{ id: string }> }).folders[0];
+    const createFolder = await authenticatedRequest(user.id, "/api/folders", {
+      method: "POST",
+      body: JSON.stringify({ name: "Destino", emoji: "📥" }),
+    });
+    const targetFolder = (await createFolder.json() as { folder: { id: string } }).folder;
+    const create = await authenticatedRequest(user.id, "/api/drawings", {
+      method: "POST",
+      body: JSON.stringify({ folderId: sourceFolder.id, name: "Antes" }),
+    });
+    const drawing = (await create.json() as { drawing: { id: string; version: number } }).drawing;
+
+    const update = await authenticatedRequest(user.id, `/api/drawings/${drawing.id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        expectedVersion: drawing.version,
+        name: "Depois",
+        folderId: targetFolder.id,
+      }),
+    });
+
+    expect(update.status).toBe(200);
+    await expect(update.json()).resolves.toMatchObject({
+      drawing: {
+        id: drawing.id,
+        name: "Depois",
+        folderId: targetFolder.id,
+        version: drawing.version + 1,
+      },
+    });
+  });
+
+  it("rejects moving a drawing to another user's folder without mutating it", async () => {
+    const owner = await createUser();
+    const intruder = await createUser();
+    const ownerFolders = await authenticatedRequest(owner.id, "/api/folders");
+    const ownerFolder = (await ownerFolders.json() as { folders: Array<{ id: string }> }).folders[0];
+    const intruderFolders = await authenticatedRequest(intruder.id, "/api/folders");
+    const foreignFolder = (await intruderFolders.json() as { folders: Array<{ id: string }> }).folders[0];
+    const create = await authenticatedRequest(owner.id, "/api/drawings", {
+      method: "POST",
+      body: JSON.stringify({ folderId: ownerFolder.id, name: "Original" }),
+    });
+    const drawing = (await create.json() as { drawing: { id: string; version: number } }).drawing;
+
+    const update = await authenticatedRequest(owner.id, `/api/drawings/${drawing.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ expectedVersion: drawing.version, folderId: foreignFolder.id }),
+    });
+
+    expect(update.status).toBe(404);
+    await expect(update.json()).resolves.toEqual({
+      error: { code: "not_found", message: "Resource not found" },
+    });
+
+    const get = await authenticatedRequest(owner.id, `/api/drawings/${drawing.id}`);
+    await expect(get.json()).resolves.toMatchObject({
+      drawing: { id: drawing.id, name: "Original", folderId: ownerFolder.id, version: drawing.version },
+    });
+  });
+
   it("rejects invalid drawing input and missing or foreign drawing ownership", async () => {
     const owner = await createUser();
     const intruder = await createUser();

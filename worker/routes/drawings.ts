@@ -54,8 +54,12 @@ export function createDrawingRoutes() {
       context.env.DB,
       context.get("user").id,
       drawingId,
-      input.expectedVersion,
-      input.scene ?? current.scene,
+      {
+        expectedVersion: input.expectedVersion,
+        name: input.name,
+        folderId: input.folderId,
+        scene: input.scene ?? current.scene,
+      },
     );
     return context.json(updateDrawingResponseSchema.parse({ drawing: toDrawing(drawing) }));
   });
