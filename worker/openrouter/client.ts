@@ -123,8 +123,12 @@ export class OpenRouterClient {
     const body: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       const providerError = providerErrorSchema.safeParse(body);
-      // Provider error text can echo credentials or private prompts, so never expose it.
-      void providerError;
+      // Provider error text can echo credentials or private prompts, so never
+      // log or return it. Status and provider code are safe operational data.
+      console.error("OpenRouter response failure", {
+        status: response.status,
+        code: providerError.success ? providerError.data.error?.code : undefined,
+      });
       if (response.status === 429) {
         throw new AppError(429, "rate_limited", "OpenRouter request failed");
       }
