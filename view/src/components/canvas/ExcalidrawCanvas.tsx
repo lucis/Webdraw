@@ -10,15 +10,20 @@
 import { Excalidraw } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import type { ListModelsResponse } from "../../../../shared/contracts/models";
 import { requestJson } from "../../lib/api";
 import { useInterfaceGeneration } from "../../hooks/useInterfaceGeneration";
 import { useDrawingStore } from "../../stores/drawing-store";
 import { ArtifactEmbed, isArtifactEmbedLink } from "../artifacts/ArtifactEmbed";
+import { CanvasCommandContext, type CanvasCommandContextValue } from "./canvas-command-context";
 
-export const ExcalidrawCanvas = () => {
+interface ExcalidrawCanvasProps {
+  children?: ReactNode;
+}
+
+export const ExcalidrawCanvas = ({ children }: ExcalidrawCanvasProps) => {
   // Estado do store
   const currentDrawing = useDrawingStore((state) => state.currentDrawing);
   const syncStatus = useDrawingStore((state) => state.syncStatus);
@@ -112,6 +117,36 @@ export const ExcalidrawCanvas = () => {
     if (!interfaceModel || !hasSelection || interfaceGeneration.phase !== "idle") return;
     void interfaceGeneration.generate({ model: interfaceModel }).catch(() => undefined);
   }, [hasSelection, interfaceGeneration, interfaceModel]);
+
+  const setActiveModelId = useCallback((modelId: string) => {
+    if (!interfaceModels.some((model) => model.id === modelId)) return;
+    setInterfaceModel(modelId);
+    sessionStorage.setItem("webdraw.interface-model", modelId);
+  }, [interfaceModels]);
+
+  const generationLabel = interfaceGeneration.phase === "idle"
+    ? isArtifactRevisionSelection ? "Update interface" : "Generate interface"
+    : isArtifactRevisionSelection ? "Updating interface…" : "Generating interface…";
+  const canvasCommands = useMemo<CanvasCommandContextValue>(() => ({
+    canGenerate: hasSelection && interfaceModel !== null && interfaceGeneration.phase === "idle",
+    generationLabel,
+    generationPhase: interfaceGeneration.phase,
+    models: interfaceModels,
+    activeModelId: interfaceModel,
+    setActiveModelId,
+    generateInterface,
+    error: interfaceGeneration.error ?? modelError,
+  }), [
+    generateInterface,
+    generationLabel,
+    hasSelection,
+    interfaceGeneration.error,
+    interfaceGeneration.phase,
+    interfaceModel,
+    interfaceModels,
+    modelError,
+    setActiveModelId,
+  ]);
   
   // Handler de mudanças (auto-save com debounce)
   const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
@@ -180,97 +215,71 @@ export const ExcalidrawCanvas = () => {
   // Empty state quando não há drawing
   if (!currentDrawing) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-slate-900">
-        <div className="text-center">
-          <svg
-            className="w-16 h-16 mx-auto mb-4 text-slate-700"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-            />
-          </svg>
-          <div className="text-lg text-slate-400 mb-2">
-            Nenhum desenho selecionado
+      <CanvasCommandContext.Provider value={canvasCommands}>
+        <div className="h-full w-full flex items-center justify-center bg-slate-900">
+          <div className="text-center">
+            <svg
+              className="w-16 h-16 mx-auto mb-4 text-slate-700"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+              />
+            </svg>
+            <div className="text-lg text-slate-400 mb-2">
+              Nenhum desenho selecionado
+            </div>
+            <div className="text-sm text-slate-600">
+              Selecione ou crie um desenho na sidebar
+            </div>
           </div>
-          <div className="text-sm text-slate-600">
-            Selecione ou crie um desenho na sidebar
-          </div>
+          {children}
         </div>
-      </div>
+      </CanvasCommandContext.Provider>
     );
   }
   
   return (
-    <div className="h-full w-full relative">
-      {/* Indicador de sync simples */}
-      <div className="absolute top-4 right-4 z-50">
-        <label className="sr-only" htmlFor="interface-model">Interface model</label>
-        <select
-          id="interface-model"
-          aria-label="Interface model"
-          className="mb-2 block w-full rounded bg-white px-2 py-1 text-sm text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-          value={interfaceModel ?? ""}
-          disabled={!interfaceModel || interfaceGeneration.phase !== "idle"}
-          onChange={(event) => {
-            const model = event.target.value;
-            setInterfaceModel(model);
-            sessionStorage.setItem("webdraw.interface-model", model);
+    <CanvasCommandContext.Provider value={canvasCommands}>
+      <div className="h-full w-full relative">
+        {/* Indicador de sync simples */}
+        <div className="absolute top-4 right-4 z-50">
+          {syncStatus === "saving" && (
+            <div className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded-full text-sm shadow-lg">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              Salvando...
+            </div>
+          )}
+          {syncStatus === "error" && (
+            <div className="flex items-center gap-2 px-3 py-1 bg-red-600 text-white rounded-full text-sm shadow-lg">
+              <div className="w-2 h-2 bg-white rounded-full"></div>
+              Erro
+            </div>
+          )}
+        </div>
+
+        {children}
+        {/* Canvas Excalidraw */}
+        <Excalidraw
+          key={currentDrawing.id}
+          excalidrawAPI={onExcalidrawAPIMount}
+          onChange={handleChange}
+          initialData={initialData}
+          validateEmbeddable={validateEmbeddable}
+          renderEmbeddable={renderEmbeddable}
+          UIOptions={{
+            canvasActions: {
+              loadScene: false,
+            },
           }}
-        >
-          {interfaceModels.map((model) => (
-            <option key={model.id} value={model.id}>{`${model.name} (${model.id})`}</option>
-          ))}
-        </select>
-        <button
-          type="button"
-          className="mb-2 rounded bg-violet-600 px-3 py-1 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={!hasSelection || !interfaceModel || interfaceGeneration.phase !== "idle"}
-          onClick={generateInterface}
-        >
-          {interfaceGeneration.phase === "idle"
-            ? isArtifactRevisionSelection ? "Update interface" : "Generate interface"
-            : isArtifactRevisionSelection ? "Updating interface…" : "Generating interface…"}
-        </button>
-        {(interfaceGeneration.error ?? modelError) && (
-          <div role="alert" className="max-w-xs rounded bg-red-600 px-3 py-1 text-sm text-white">
-            {interfaceGeneration.error ?? modelError}
-          </div>
-        )}
-        {syncStatus === "saving" && (
-          <div className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded-full text-sm shadow-lg">
-            <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-            Salvando...
-          </div>
-        )}
-        {syncStatus === "error" && (
-          <div className="flex items-center gap-2 px-3 py-1 bg-red-600 text-white rounded-full text-sm shadow-lg">
-            <div className="w-2 h-2 bg-white rounded-full"></div>
-            Erro
-          </div>
-        )}
+        />
       </div>
-      
-      {/* Canvas Excalidraw */}
-      <Excalidraw
-        key={currentDrawing.id}
-        excalidrawAPI={onExcalidrawAPIMount}
-        onChange={handleChange}
-        initialData={initialData}
-        validateEmbeddable={validateEmbeddable}
-        renderEmbeddable={renderEmbeddable}
-        UIOptions={{
-          canvasActions: {
-            loadScene: false,
-          },
-        }}
-      />
-    </div>
+    </CanvasCommandContext.Provider>
   );
 };
 

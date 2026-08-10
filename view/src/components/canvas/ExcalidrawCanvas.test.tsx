@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useDrawingStore } from "../../stores/drawing-store";
 import { useArtifactStore } from "../../stores/artifact-store";
 import { ExcalidrawCanvas } from "./ExcalidrawCanvas";
+import { useCanvasCommands } from "./canvas-command-context";
 
 const { requestJson, initialData, excalidrawApi, getSelectionContext, exportSelectionPng } = vi.hoisted(() => ({
   requestJson: vi.fn(),
@@ -94,6 +95,38 @@ const generatedInterface = {
   },
 };
 
+function CanvasCommandConsumer() {
+  const commands = useCanvasCommands();
+
+  return (
+    <div>
+      <label htmlFor="canvas-command-model">Canvas command model</label>
+      <select
+        id="canvas-command-model"
+        value={commands.activeModelId ?? ""}
+        onChange={(event) => commands.setActiveModelId(event.target.value)}
+      >
+        {commands.models.map((model) => (
+          <option key={model.id} value={model.id}>{`${model.name} (${model.id})`}</option>
+        ))}
+      </select>
+      <button type="button" disabled={!commands.canGenerate} onClick={commands.generateInterface}>
+        {commands.generationLabel}
+      </button>
+      <output aria-label="Generation phase">{commands.generationPhase}</output>
+      {commands.error && <div role="alert">{commands.error}</div>}
+    </div>
+  );
+}
+
+function renderCanvasWithCommandConsumer() {
+  return render(
+    <ExcalidrawCanvas>
+      <CanvasCommandConsumer />
+    </ExcalidrawCanvas>,
+  );
+}
+
 beforeEach(() => {
   sessionStorage.clear();
   requestJson.mockResolvedValue({ purpose: "interface", models: [] });
@@ -120,7 +153,7 @@ afterEach(() => {
 });
 
 describe("ExcalidrawCanvas autosave", () => {
-  it("renders compatible interface models, defaults to the first, and submits a changed choice", async () => {
+  it("lets an external command consumer select a model and invoke generation", async () => {
     useDrawingStore.setState({ currentDrawing: drawingA, drawings: [drawingA] });
     getSelectionContext.mockReturnValue({
       elements: [{ id: "source", type: "rectangle", x: 100, y: 50, width: 500, height: 300 }],
@@ -138,12 +171,14 @@ describe("ExcalidrawCanvas autosave", () => {
       throw new Error(`Unexpected request: ${path}`);
     });
 
-    render(<ExcalidrawCanvas />);
+    renderCanvasWithCommandConsumer();
 
-    const selector = await screen.findByLabelText("Interface model");
+    const selector = await screen.findByLabelText("Canvas command model");
     expect((selector as HTMLSelectElement).value).toBe("vision-a");
     expect(screen.getByRole("option", { name: "Vision A (vision-a)" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "Vision B (vision-b)" })).toBeTruthy();
+    expect(screen.queryByLabelText("Interface model")).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Generate interface" })).toHaveLength(1);
 
     fireEvent.change(selector, { target: { value: "vision-b" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate interface" }));
@@ -160,9 +195,9 @@ describe("ExcalidrawCanvas autosave", () => {
     useDrawingStore.setState({ currentDrawing: drawingA, drawings: [drawingA] });
     requestJson.mockResolvedValue({ purpose: "interface", models: interfaceModels });
 
-    render(<ExcalidrawCanvas />);
+    renderCanvasWithCommandConsumer();
 
-    expect((await screen.findByLabelText("Interface model") as HTMLSelectElement).value).toBe("vision-b");
+    expect((await screen.findByLabelText("Canvas command model") as HTMLSelectElement).value).toBe("vision-b");
   });
 
   it("falls back to the first compatible model when the persisted model is stale", async () => {
@@ -170,9 +205,32 @@ describe("ExcalidrawCanvas autosave", () => {
     useDrawingStore.setState({ currentDrawing: drawingA, drawings: [drawingA] });
     requestJson.mockResolvedValue({ purpose: "interface", models: interfaceModels });
 
-    render(<ExcalidrawCanvas />);
+    renderCanvasWithCommandConsumer();
 
-    expect((await screen.findByLabelText("Interface model") as HTMLSelectElement).value).toBe("vision-a");
+    expect((await screen.findByLabelText("Canvas command model") as HTMLSelectElement).value).toBe("vision-a");
+  });
+
+  it("keeps external command availability synchronized with the canvas selection", async () => {
+    useDrawingStore.setState({ currentDrawing: drawingA, drawings: [drawingA] });
+    requestJson.mockResolvedValue({ purpose: "interface", models: interfaceModels });
+
+    renderCanvasWithCommandConsumer();
+
+    const command = await screen.findByRole("button", { name: "Generate interface" });
+    expect((command as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit drawing" }));
+
+    expect((command as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("exposes model catalog errors to an external command consumer", async () => {
+    useDrawingStore.setState({ currentDrawing: drawingA, drawings: [drawingA] });
+    requestJson.mockRejectedValue(new Error("Model catalog unavailable"));
+
+    renderCanvasWithCommandConsumer();
+
+    expect((await screen.findByRole("alert")).textContent).toBe("Model catalog unavailable");
   });
 
   it("rehydrates persisted collaborators as a Map before opening a drawing", () => {
@@ -183,7 +241,7 @@ describe("ExcalidrawCanvas autosave", () => {
       },
     });
 
-    render(<ExcalidrawCanvas />);
+    renderCanvasWithCommandConsumer();
 
     expect((initialData.current as { appState: { collaborators: unknown } }).appState.collaborators).toBeInstanceOf(Map);
   });
@@ -193,7 +251,7 @@ describe("ExcalidrawCanvas autosave", () => {
     useDrawingStore.setState({ currentDrawing: drawingA, drawings: [drawingA, drawingB] });
     requestJson.mockResolvedValue({ drawing: drawingA });
 
-    render(<ExcalidrawCanvas />);
+    renderCanvasWithCommandConsumer();
     fireEvent.click(screen.getByRole("button", { name: "Edit drawing" }));
 
     act(() => {
@@ -243,7 +301,7 @@ describe("ExcalidrawCanvas autosave", () => {
       throw new Error(`Unexpected request: ${path}`);
     });
 
-    render(<ExcalidrawCanvas />);
+    renderCanvasWithCommandConsumer();
 
     const button = await screen.findByRole("button", { name: "Generate interface" });
     expect((button as HTMLButtonElement).disabled).toBe(false);
@@ -278,7 +336,7 @@ describe("ExcalidrawCanvas autosave", () => {
       ? Promise.resolve({ purpose: "interface", models: [{ id: "vision-model" }] })
       : Promise.reject(new Error(`Unexpected request: ${path}`)));
 
-    render(<ExcalidrawCanvas />);
+    renderCanvasWithCommandConsumer();
 
     expect(await screen.findByRole("button", { name: "Update interface" })).toBeTruthy();
   });
