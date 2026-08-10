@@ -12,7 +12,15 @@ export const generationPurposeSchema = z.enum([
   "interface",
   "artifact_revision",
   "manual_edit",
+  "drawing",
 ]);
+
+export const MAX_DRAWING_GENERATION_PROMPT_LENGTH = 4_000;
+export const MAX_DRAWING_GENERATION_CONTEXT_ELEMENTS = 40;
+export const MAX_DRAWING_GENERATION_SELECTED_IDS = 40;
+export const MAX_DRAWING_GENERATION_TEXT_LENGTH = 4_000;
+export const MAX_DRAWING_GENERATION_COORDINATE = 1_000_000;
+export const MAX_DRAWING_GENERATION_DIMENSION = 10_000;
 
 export const selectionBoundsSchema = z.object({
   x: z.number(),
@@ -80,6 +88,44 @@ export const interfaceGenerationRequestSchema = z.object({
   }
 });
 
+const drawingGenerationCoordinateSchema = z.number().finite().min(-MAX_DRAWING_GENERATION_COORDINATE).max(MAX_DRAWING_GENERATION_COORDINATE);
+const drawingGenerationDimensionSchema = z.number().finite().positive().max(MAX_DRAWING_GENERATION_DIMENSION);
+const drawingGenerationIdSchema = z.string().trim().min(1).max(256);
+
+/**
+ * Intentionally reduced, text-only Excalidraw context for AI drawing. This is
+ * a transport boundary: screenshots, bindings, file references, versions,
+ * and other opaque element data are rejected rather than silently forwarded.
+ */
+export const drawingSemanticElementSchema = z.object({
+  id: drawingGenerationIdSchema,
+  type: z.string().trim().min(1).max(64),
+  x: drawingGenerationCoordinateSchema,
+  y: drawingGenerationCoordinateSchema,
+  width: drawingGenerationDimensionSchema,
+  height: drawingGenerationDimensionSchema,
+  text: z.string().max(MAX_DRAWING_GENERATION_TEXT_LENGTH).optional(),
+  strokeColor: z.string().trim().min(1).max(64).optional(),
+  backgroundColor: z.string().trim().min(1).max(64).optional(),
+}).strict();
+
+export const drawingGenerationRequestSchema = z.object({
+  drawingId: drawingGenerationIdSchema,
+  drawingVersion: z.number().int().positive(),
+  model: z.string().trim().min(1).max(256),
+  prompt: z.string().trim().min(1).max(MAX_DRAWING_GENERATION_PROMPT_LENGTH),
+  selectedIds: z.array(drawingGenerationIdSchema).max(MAX_DRAWING_GENERATION_SELECTED_IDS)
+    .refine((ids) => new Set(ids).size === ids.length, "selectedIds must not contain duplicates"),
+  semantic: z.object({
+    elements: z.array(drawingSemanticElementSchema).max(MAX_DRAWING_GENERATION_CONTEXT_ELEMENTS)
+      .refine((elements) => new Set(elements.map((element) => element.id)).size === elements.length, "semantic elements must not contain duplicate IDs"),
+    viewportCenter: z.object({
+      x: drawingGenerationCoordinateSchema,
+      y: drawingGenerationCoordinateSchema,
+    }).strict(),
+  }).strict(),
+}).strict();
+
 /** Generation is deliberately constrained to the implemented HTML variant. */
 export const generatedArtifactSchema = htmlArtifactSchema;
 
@@ -89,4 +135,6 @@ export type SelectionBounds = z.infer<typeof selectionBoundsSchema>;
 export type SemanticSelectionElement = z.infer<typeof semanticSelectionElementSchema>;
 export type SelectionContext = z.infer<typeof selectionContextSchema>;
 export type InterfaceGenerationRequest = z.infer<typeof interfaceGenerationRequestSchema>;
+export type DrawingSemanticElement = z.infer<typeof drawingSemanticElementSchema>;
+export type DrawingGenerationRequest = z.infer<typeof drawingGenerationRequestSchema>;
 export type GeneratedArtifact = z.infer<typeof generatedArtifactSchema>;

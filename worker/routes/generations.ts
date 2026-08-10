@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { interfaceGenerationRequestSchema } from "../../shared/contracts/generation";
+import { drawingGenerationRequestSchema, interfaceGenerationRequestSchema } from "../../shared/contracts/generation";
 import type { ArtifactRecord, ArtifactVersion } from "../../shared/contracts/artifacts";
 import { decryptSecret } from "../auth/crypto";
 import { createArtifact, createCandidateVersion, getArtifact, listArtifactVersions } from "../db/artifacts";
@@ -10,6 +10,7 @@ import { getCredential } from "../db/sessions";
 import { AppError } from "../lib/errors";
 import { OpenRouterClient } from "../openrouter/client";
 import { buildInterfaceGenerationRequest, createPersistableSemanticSnapshot, parseGeneratedHtmlArtifact, validatePngDataUrl, validateSourceHtml } from "../openrouter/interface-generation";
+import { buildDrawingGenerationRequest, parseGeneratedDrawingOperations } from "../openrouter/drawing-generation";
 import { requireCompatibleModel } from "../openrouter/models";
 import type { AppBindings } from "../app";
 
@@ -114,6 +115,65 @@ export function createGenerationRoutes(options: GenerationRouteOptions = {}) {
     }
   });
 
+  app.post("/drawing", async (context) => {
+    const input = await parseDrawingInput(context.req.raw);
+    const userId = context.get("user").id;
+    const drawing = await getDrawing(context.env.DB, userId, input.drawingId);
+    if (!drawing) throw new AppError(404, "not_found", "Drawing not found");
+    if (drawing.version !== input.drawingVersion) {
+      throw new AppError(409, "version_conflict", "Drawing has been updated");
+    }
+
+    const run = await createGenerationRun(context.env.DB, userId, {
+      drawingId: drawing.id,
+      purpose: "drawing",
+      model: input.model,
+    });
+    const startedAt = Date.now();
+
+    try {
+      const credential = await getCredential(context.env.DB, userId);
+      if (!credential) throw new AppError(401, "unauthorized", "OpenRouter credential unavailable");
+
+      let apiKey: string | undefined;
+      try {
+        apiKey = await decryptSecret({
+          ciphertext: credential.ciphertext,
+          iv: credential.iv,
+          formatVersion: credential.formatVersion as 1,
+        }, context.env.AUTH_ENCRYPTION_KEY);
+      } catch {
+        throw new AppError(401, "unauthorized", "OpenRouter credential unavailable");
+      }
+
+      try {
+        const client = new OpenRouterClient({ apiKey, appOrigin: context.env.APP_ORIGIN, fetch: options.fetch });
+        await requireCompatibleModel(() => client.listModels({ signal: context.req.raw.signal }), input.model, "drawing");
+        const completion = await client.chatCompletion({
+          ...buildDrawingGenerationRequest(input),
+          signal: context.req.raw.signal,
+        });
+        const result = parseGeneratedDrawingOperations(completion, new Set(input.selectedIds));
+        const generation = await completeGenerationRun(context.env.DB, userId, run.id, {
+          status: "succeeded",
+          promptTokens: completion.usage?.prompt_tokens,
+          completionTokens: completion.usage?.completion_tokens,
+          totalTokens: completion.usage?.total_tokens,
+          elapsedMs: Date.now() - startedAt,
+        });
+
+        // This route deliberately returns a proposal. It never updates drawings.
+        return context.json({ ...result, generation, model: input.model });
+      } finally {
+        apiKey = undefined;
+      }
+    } catch (error) {
+      const normalized = normalizeDrawingGenerationError(error);
+      await markFailed(context.env.DB, userId, run, normalized, startedAt);
+      throw normalized;
+    }
+  });
+
   return app;
 }
 
@@ -147,8 +207,26 @@ async function parseInput(request: Request) {
   return parsed.data;
 }
 
+async function parseDrawingInput(request: Request) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    throw new AppError(400, "validation_failed", "Invalid request");
+  }
+  const parsed = drawingGenerationRequestSchema.safeParse(body);
+  if (!parsed.success) throw new AppError(400, "validation_failed", "Invalid request", parsed.error.flatten());
+  return parsed.data;
+}
+
 function normalizeGenerationError(error: unknown): AppError {
   if (error instanceof AppError) return error;
+  return new AppError(502, "openrouter_error", "OpenRouter request failed");
+}
+
+function normalizeDrawingGenerationError(error: unknown): AppError {
+  if (error instanceof AppError) return error;
+  // Model and validator errors must not leak generated IDs, prompt text, or provider details.
   return new AppError(502, "openrouter_error", "OpenRouter request failed");
 }
 

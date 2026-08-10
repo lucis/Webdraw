@@ -135,7 +135,7 @@ export function validateDrawingOperations(
         throw new DrawingOperationValidationError(`Operation ${index + 1} targets an ID outside the selected context`);
       }
       if (targetIds.has(parsed.id)) {
-        throw new DrawingOperationValidationError(`Operation ${index + 1} duplicates target ID \"${parsed.id}\"`);
+        throw new DrawingOperationValidationError(`Operation ${index + 1} duplicates target ID "${parsed.id}"`);
       }
       targetIds.add(parsed.id);
     }
@@ -180,7 +180,7 @@ function parseOperation(operation: unknown, index: number): DrawingOperation {
     if (patch && typeof patch === "object" && !Array.isArray(patch)) {
       const unknownFields = Object.keys(patch).filter((field) => !PATCH_FIELDS.has(field));
       if (unknownFields.length > 0) {
-        throw new DrawingOperationValidationError(`Operation ${index + 1} contains unknown patch field \"${unknownFields[0]}\"`);
+        throw new DrawingOperationValidationError(`Operation ${index + 1} contains unknown patch field "${unknownFields[0]}"`);
       }
     }
   }
