@@ -155,9 +155,28 @@ function invalidModelOutput(message = "OpenRouter returned invalid HTML artifact
 }
 
 function redactOpaqueData(value: string): string {
-  return value
-    .replace(/data:[^,\s"'<>]*;base64,[A-Za-z0-9+/_-]+={0,2}/gi, "[redacted-data-url]")
-    .replace(/iVBORw0KGgo[A-Za-z0-9+/]*={0,2}/g, "[redacted-png-base64]");
+  const normalized = normalizePercentEncodedString(value);
+  const dataUrlSpans = findNormalizedSpans(
+    normalized,
+    /data:[^,\s"'<>]*;base64,[A-Za-z0-9+/_-]+={0,2}/gi,
+    "[redacted-data-url]",
+  );
+  const pngSpans = findNormalizedSpans(
+    normalized,
+    /iVBORw0KGgo[A-Za-z0-9+/]*={0,2}/g,
+    "[redacted-png-base64]",
+  ).filter((pngSpan) => !dataUrlSpans.some((dataUrlSpan) => spansOverlap(dataUrlSpan, pngSpan)));
+  const spans = [...dataUrlSpans, ...pngSpans].sort((left, right) => left.start - right.start);
+  if (spans.length === 0) return value;
+
+  let result = "";
+  let index = 0;
+  for (const span of spans) {
+    result += value.slice(index, span.start);
+    result += span.replacement;
+    index = span.end;
+  }
+  return result + value.slice(index);
 }
 
 /** Applies the data-URL rule at every persisted string boundary without mutating request input. */
@@ -170,6 +189,71 @@ function sanitizePersistedSnapshot(value: unknown): unknown {
     );
   }
   return value;
+}
+
+interface NormalizedPercentEncodedString {
+  value: string;
+  offsets: Array<{ start: number; end: number }>;
+}
+
+interface RedactionSpan {
+  start: number;
+  end: number;
+  replacement: "[redacted-data-url]" | "[redacted-png-base64]";
+}
+
+/**
+ * Normalizes valid percent escapes while retaining an offset map back to the
+ * original string. Invalid escapes remain untouched, so ordinary text such as
+ * "%ZZ" is neither rejected nor changed.
+ */
+function normalizePercentEncodedString(value: string): NormalizedPercentEncodedString {
+  let normalized = "";
+  const offsets: Array<{ start: number; end: number }> = [];
+
+  for (let index = 0; index < value.length;) {
+    const percentRun = /^(?:%[0-9A-Fa-f]{2})+/.exec(value.slice(index))?.[0];
+    if (percentRun) {
+      try {
+        const decoded = decodeURIComponent(percentRun);
+        for (const character of decoded) {
+          normalized += character;
+          offsets.push({ start: index, end: index + percentRun.length });
+        }
+        index += percentRun.length;
+        continue;
+      } catch {
+        // Preserve invalid UTF-8 percent sequences exactly as user text.
+      }
+    }
+
+    normalized += value[index];
+    offsets.push({ start: index, end: index + 1 });
+    index += 1;
+  }
+
+  return { value: normalized, offsets };
+}
+
+function findNormalizedSpans(
+  normalized: NormalizedPercentEncodedString,
+  expression: RegExp,
+  replacement: RedactionSpan["replacement"],
+): RedactionSpan[] {
+  const spans: RedactionSpan[] = [];
+  for (const match of normalized.value.matchAll(expression)) {
+    const startIndex = match.index;
+    const endIndex = startIndex + match[0].length - 1;
+    const firstOffset = normalized.offsets[startIndex];
+    const lastOffset = normalized.offsets[endIndex];
+    if (!firstOffset || !lastOffset) continue;
+    spans.push({ start: firstOffset.start, end: lastOffset.end, replacement });
+  }
+  return spans;
+}
+
+function spansOverlap(left: RedactionSpan, right: RedactionSpan): boolean {
+  return left.start < right.end && right.start < left.end;
 }
 
 /**

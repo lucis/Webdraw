@@ -251,6 +251,42 @@ describe("interface artifact generation route", () => {
     expect(JSON.stringify(openRouterRequest.messages)).toContain(onePixelPng);
   });
 
+  it("redacts percent-encoded PNG data URLs while preserving malformed percent text and the original model input", async () => {
+    const { user, drawing } = await createAuthenticatedUser();
+    const onePixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLkEwAAAABJRU5ErkJggg==";
+    const encodedDataUrl = `data:image/png;base64,%69${onePixelPng.slice(1)}`;
+    const mixedEncodedDataUrl = `d%61t%61:image/png;charset=utf-8;base64,i%56${onePixelPng.slice(2)}`;
+    const request = requestFor(drawing.id);
+    const element = request.selection.semantic.elements[0];
+    element.text = `Before ${encodedDataUrl} after`;
+    element.strokeColor = `Before ${mixedEncodedDataUrl} after`;
+    element.frameId = `%69${onePixelPng.slice(1)}`;
+    element.backgroundColor = "Ordinary value with malformed %ZZ escape";
+    const fetch = providerFetch();
+
+    const response = await authenticatedRequest(user.id, request, fetch);
+    const body = await response.json() as { artifact: { id: string } };
+    const persisted = await testEnv.DB.prepare(
+      "SELECT source_snapshot_json FROM artifact_versions WHERE artifact_id = ? AND version = 1",
+    ).bind(body.artifact.id).first<{ source_snapshot_json: string }>();
+    const snapshot = JSON.parse(persisted?.source_snapshot_json ?? "{}") as {
+      elements: Array<{ text?: string; strokeColor?: string; frameId?: string; backgroundColor?: string }>;
+    };
+    const openRouterRequest = JSON.parse(String(fetch.mock.calls[1]?.[1]?.body));
+
+    expect(response.status).toBe(201);
+    expect(persisted?.source_snapshot_json).not.toContain(onePixelPng);
+    expect(persisted?.source_snapshot_json).not.toContain("%69VBORw0KGgo");
+    expect(snapshot.elements[0]).toMatchObject({
+      text: "Before [redacted-data-url] after",
+      strokeColor: "Before [redacted-data-url] after",
+      frameId: "[redacted-png-base64]",
+      backgroundColor: "Ordinary value with malformed %ZZ escape",
+    });
+    expect(JSON.stringify(openRouterRequest.messages)).toContain(encodedDataUrl);
+    expect(JSON.stringify(openRouterRequest.messages)).toContain(mixedEncodedDataUrl);
+  });
+
   it("rejects fake document-closing tags in inline script text and comments", async () => {
     const { user, drawing } = await createAuthenticatedUser();
     const misleadingSource = {
