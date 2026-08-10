@@ -5,6 +5,7 @@ import { AppError } from "./lib/errors";
 import { requireUser } from "./middleware/session";
 import { createDrawingRoutes } from "./routes/drawings";
 import { createFolderRoutes } from "./routes/folders";
+import { createModelRoutes } from "./routes/models";
 
 export interface AuthEnv {
   APP_ORIGIN: string;
@@ -30,6 +31,8 @@ export function createApp(options: AppOptions = {}) {
   app.route("/api/folders", createFolderRoutes());
   app.use("/api/drawings/*", requireUser);
   app.route("/api/drawings", createDrawingRoutes());
+  app.use("/api/models/*", requireUser);
+  app.route("/api/models", createModelRoutes({ fetch: options.fetch }));
 
   app.onError((error, context) => {
     if (error instanceof RepositoryError) {

@@ -28,6 +28,8 @@ export interface EncryptedCredential {
   formatVersion: number;
 }
 
+export type ModelPreferencePurpose = "interface" | "drawing";
+
 export async function ensureUser(db: D1Database, openRouterUserId: string): Promise<UserRow> {
   const now = Date.now();
   const id = crypto.randomUUID();
@@ -88,6 +90,27 @@ export async function getCredential(db: D1Database, userId: string): Promise<Cre
     .first<CredentialDatabaseRow>();
 
   return credential ? mapCredential(credential) : null;
+}
+
+/** Stores the server-side default selected by a user for a generation mode. */
+export async function saveModelPreference(
+  db: D1Database,
+  userId: string,
+  purpose: ModelPreferencePurpose,
+  modelId: string,
+): Promise<UserRow | null> {
+  const column = purpose === "interface" ? "interface_model" : "drawing_model";
+  const user = await db
+    .prepare(
+      `UPDATE users
+       SET ${column} = ?, updated_at = ?
+       WHERE id = ?
+       RETURNING id, openrouter_user_id, interface_model, drawing_model, created_at, updated_at`,
+    )
+    .bind(modelId, Date.now(), userId)
+    .first<UserDatabaseRow>();
+
+  return user ? mapUser(user) : null;
 }
 
 export async function createSession(
