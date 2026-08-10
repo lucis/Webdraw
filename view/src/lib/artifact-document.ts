@@ -1,7 +1,7 @@
 export const ARTIFACT_SANDBOX = "allow-scripts";
 
 const tailwindBrowserCdn = "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.3";
-const artifactContentSecurityPolicy = "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none";
+const artifactContentSecurityPolicy = `default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline' ${tailwindBrowserCdn}; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none`;
 
 const artifactErrorBridge = `
 (() => {
