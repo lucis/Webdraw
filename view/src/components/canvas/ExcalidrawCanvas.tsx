@@ -8,10 +8,12 @@
  */
 
 import { Excalidraw } from "@excalidraw/excalidraw";
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
 import React, { useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useDrawingStore } from "../../stores/drawing-store";
+import { ArtifactEmbed, isArtifactEmbedLink } from "../artifacts/ArtifactEmbed";
 
 export const ExcalidrawCanvas = () => {
   // Estado do store
@@ -47,15 +49,20 @@ export const ExcalidrawCanvas = () => {
   }, [currentDrawing?.id, navigate]);
   
   // Callback quando API do Excalidraw monta
-  const onExcalidrawAPIMount = useCallback((api: any) => {
+  const onExcalidrawAPIMount = useCallback((api: ExcalidrawImperativeAPI) => {
     console.log('🎯 Excalidraw API montada');
-    void api;
 
     // O desenho é carregado pelo initialData do remount, não por updateScene.
     if (currentDrawing) {
       lastSavedSceneRef.current = sceneFingerprint(currentDrawing.scene);
     }
   }, [currentDrawing]);
+
+  const validateEmbeddable = useCallback((link: string) => isArtifactEmbedLink(link), []);
+  const renderEmbeddable = useCallback((element: Parameters<NonNullable<React.ComponentProps<typeof Excalidraw>["renderEmbeddable"]>>[0]) => {
+    if (!isArtifactEmbedLink(element.link)) return null;
+    return <ArtifactEmbed element={element} />;
+  }, []);
   
   // Handler de mudanças (auto-save com debounce)
   const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
@@ -172,6 +179,8 @@ export const ExcalidrawCanvas = () => {
         excalidrawAPI={onExcalidrawAPIMount}
         onChange={handleChange}
         initialData={initialData}
+        validateEmbeddable={validateEmbeddable}
+        renderEmbeddable={renderEmbeddable}
         UIOptions={{
           canvasActions: {
             loadScene: false,
