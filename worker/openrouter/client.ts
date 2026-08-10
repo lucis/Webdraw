@@ -105,7 +105,12 @@ export class OpenRouterClient {
           "content-type": "application/json",
         },
       });
-    } catch {
+    } catch (error) {
+      // Keep the response sanitized, while retaining enough operational context
+      // to distinguish local runtime/network failures from provider responses.
+      console.error("OpenRouter request transport failure", {
+        name: error instanceof Error ? error.name : "unknown",
+      });
       throw new AppError(502, "openrouter_error", "OpenRouter request failed");
     }
 
