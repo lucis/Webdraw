@@ -1,16 +1,18 @@
 import React from "react";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useDrawingStore } from "../../stores/drawing-store";
 import { ExcalidrawCanvas } from "./ExcalidrawCanvas";
 
-const { requestJson } = vi.hoisted(() => ({ requestJson: vi.fn() }));
+const { requestJson, initialData } = vi.hoisted(() => ({ requestJson: vi.fn(), initialData: { current: undefined as unknown } }));
 
 vi.mock("@excalidraw/excalidraw", () => ({
-  Excalidraw: ({ excalidrawAPI, onChange }: {
+  Excalidraw: ({ excalidrawAPI, onChange, initialData: nextInitialData }: {
     excalidrawAPI: (api: object) => void;
     onChange: (elements: readonly unknown[], appState: unknown, files: unknown) => void;
+    initialData: unknown;
   }) => {
+    initialData.current = nextInitialData;
     excalidrawAPI({});
     return (
       <button onClick={() => onChange([{ id: "edited-in-a" }], {}, {})}>
@@ -40,6 +42,7 @@ const drawingA = {
 const drawingB = { ...drawingA, id: "drawing-b", name: "B", version: 4 };
 
 afterEach(() => {
+  cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
   requestJson.mockReset();
@@ -52,6 +55,19 @@ afterEach(() => {
 });
 
 describe("ExcalidrawCanvas autosave", () => {
+  it("rehydrates persisted collaborators as a Map before opening a drawing", () => {
+    useDrawingStore.setState({
+      currentDrawing: {
+        ...drawingA,
+        scene: { ...drawingA.scene, appState: { collaborators: {} } },
+      },
+    });
+
+    render(<ExcalidrawCanvas />);
+
+    expect((initialData.current as { appState: { collaborators: unknown } }).appState.collaborators).toBeInstanceOf(Map);
+  });
+
   it("does not save drawing A's debounced scene after selection changes to drawing B", async () => {
     vi.useFakeTimers();
     useDrawingStore.setState({ currentDrawing: drawingA, drawings: [drawingA, drawingB] });

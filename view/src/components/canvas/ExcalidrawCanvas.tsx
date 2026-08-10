@@ -25,7 +25,15 @@ export const ExcalidrawCanvas = () => {
 
   // Preparar initialData do drawing atual
   // ⚠️ IMPORTANTE: Não incluir campos que causam loops no Excalidraw
-  const initialData = currentDrawing?.scene;
+  const initialData = currentDrawing && {
+    ...currentDrawing.scene,
+    appState: {
+      ...currentDrawing.scene.appState,
+      // Collaborators are transient Excalidraw runtime state. JSON persistence
+      // turns Maps into plain objects, so always rehydrate an empty Map.
+      collaborators: new Map(),
+    },
+  };
   
   // Atualizar URL quando desenho carregar
   useEffect(() => {
@@ -61,7 +69,8 @@ export const ExcalidrawCanvas = () => {
       return;
     }
 
-    const scene = { elements: [...elements], appState, files };
+    const { collaborators: _collaborators, ...persistedAppState } = appState as Record<string, unknown>;
+    const scene = { elements: [...elements], appState: persistedAppState, files };
     const fingerprint = sceneFingerprint(scene);
     if (fingerprint === lastSavedSceneRef.current) {
       return;
