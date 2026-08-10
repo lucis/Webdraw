@@ -11,6 +11,7 @@ export interface LoadedArtifact {
 
 interface ArtifactStoreState {
   artifacts: Record<string, LoadedArtifact>;
+  initialLoadErrors: Record<string, string | null>;
   loadArtifact: (artifactId: string) => Promise<LoadedArtifact>;
   reload: (artifactId: string) => Promise<LoadedArtifact>;
   upsertArtifact: (artifact: ArtifactRecord, version: ArtifactVersion) => void;
@@ -40,12 +41,16 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => {
 
     const response = await requestJson<ArtifactResponse>(`/api/artifacts/${encodeURIComponent(artifactId)}`);
     const loaded = toLoadedArtifact(response);
-    set((state) => ({ artifacts: { ...state.artifacts, [artifactId]: loaded } }));
+    set((state) => ({
+      artifacts: { ...state.artifacts, [artifactId]: loaded },
+      initialLoadErrors: { ...state.initialLoadErrors, [artifactId]: null },
+    }));
     return loaded;
   };
 
   return {
     artifacts: {},
+    initialLoadErrors: {},
     loadArtifact: (artifactId) => fetchArtifact(artifactId, false),
     reload: (artifactId) => fetchArtifact(artifactId, true),
     upsertArtifact: (artifact, version) => set((state) => {
@@ -89,7 +94,11 @@ export const useArtifactStore = create<ArtifactStoreState>((set, get) => {
     }),
     setPreviewError: (artifactId, message) => set((state) => {
       const current = state.artifacts[artifactId];
-      if (!current) return state;
+      if (!current) {
+        return {
+          initialLoadErrors: { ...state.initialLoadErrors, [artifactId]: message },
+        };
+      }
       return {
         artifacts: {
           ...state.artifacts,

@@ -31,7 +31,7 @@ const activeVersion = {
 afterEach(() => {
   cleanup();
   vi.resetAllMocks();
-  useArtifactStore.setState({ artifacts: {} });
+  useArtifactStore.setState({ artifacts: {}, initialLoadErrors: {} });
 });
 
 describe("ArtifactEmbed", () => {
@@ -81,6 +81,17 @@ describe("ArtifactEmbed", () => {
     }));
 
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("preview failed"));
+  });
+
+  it("records an initial artifact load failure and gives the user a retry control", async () => {
+    vi.mocked(requestJson).mockRejectedValue(new Error("Artifact unavailable"));
+
+    render(<ArtifactEmbed element={{ link: "webdraw://artifact/01234567-89ab-4cde-8fab-0123456789ab" } as never} />);
+
+    const error = await screen.findByRole("alert");
+    expect(error.textContent).toContain("Artifact unavailable");
+    expect(useArtifactStore.getState().initialLoadErrors[artifact.id]).toBe("Artifact unavailable");
+    expect(screen.getByRole("button", { name: "Reload preview" })).toBeTruthy();
   });
 
   it("does not render an iframe for unrelated links", () => {

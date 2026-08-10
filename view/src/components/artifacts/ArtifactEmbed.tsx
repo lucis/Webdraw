@@ -3,6 +3,7 @@ import type { ExcalidrawEmbeddableElement } from "@excalidraw/excalidraw/element
 import React, { useEffect, useMemo, useRef } from "react";
 import { ARTIFACT_SANDBOX, buildArtifactDocument } from "../../lib/artifact-document";
 import { useArtifactStore } from "../../stores/artifact-store";
+import { ArtifactControls } from "./ArtifactControls";
 
 const artifactLinkPrefix = "webdraw://artifact/";
 const artifactIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -37,6 +38,7 @@ export function ArtifactEmbed({ element }: ArtifactEmbedProps) {
   const artifactId = getArtifactIdFromLink(element.link);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const loadedArtifact = useArtifactStore((state) => artifactId ? state.artifacts[artifactId] : undefined);
+  const initialLoadError = useArtifactStore((state) => artifactId ? state.initialLoadErrors[artifactId] ?? null : null);
   const loadArtifact = useArtifactStore((state) => state.loadArtifact);
   const reload = useArtifactStore((state) => state.reload);
   const setPreviewError = useArtifactStore((state) => state.setPreviewError);
@@ -69,10 +71,11 @@ export function ArtifactEmbed({ element }: ArtifactEmbedProps) {
 
   if (!artifactId) return null;
 
-  if (loadedArtifact?.previewError) {
+  const previewError = loadedArtifact?.previewError ?? initialLoadError;
+  if (previewError) {
     return (
       <div role="alert" className="h-full w-full p-3 text-sm text-red-700 bg-red-50 overflow-auto">
-        <p>{loadedArtifact.previewError}</p>
+        <p>{previewError}</p>
         <button type="button" onClick={() => void reload(artifactId).catch(() => undefined)}>Reload preview</button>
       </div>
     );
@@ -83,12 +86,17 @@ export function ArtifactEmbed({ element }: ArtifactEmbedProps) {
   }
 
   return (
-    <iframe
-      ref={iframeRef}
-      title={version.artifact.title}
-      className="h-full w-full border-0 bg-white"
-      sandbox={ARTIFACT_SANDBOX}
-      srcDoc={buildArtifactDocument(version.artifact.sourceHtml)}
-    />
+    <div className="relative h-full w-full">
+      <iframe
+        ref={iframeRef}
+        title={version.artifact.title}
+        className="h-full w-full border-0 bg-white"
+        sandbox={ARTIFACT_SANDBOX}
+        srcDoc={buildArtifactDocument(version.artifact.sourceHtml)}
+      />
+      <div className="absolute right-2 top-2 z-10">
+        <ArtifactControls artifactId={artifactId} />
+      </div>
+    </div>
   );
 }

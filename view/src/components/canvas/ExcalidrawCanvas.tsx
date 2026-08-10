@@ -10,8 +10,11 @@
 import { Excalidraw } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import type { ListModelsResponse } from "../../../../shared/contracts/models";
+import { requestJson } from "../../lib/api";
+import { useInterfaceGeneration } from "../../hooks/useInterfaceGeneration";
 import { useDrawingStore } from "../../stores/drawing-store";
 import { ArtifactEmbed, isArtifactEmbedLink } from "../artifacts/ArtifactEmbed";
 
@@ -24,6 +27,15 @@ export const ExcalidrawCanvas = () => {
   const navigate = useNavigate();
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedSceneRef = useRef<string | null>(null);
+  const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  const [apiMountVersion, setApiMountVersion] = useState(0);
+  const [hasSelection, setHasSelection] = useState(false);
+  const [interfaceModel, setInterfaceModel] = useState<string | null>(null);
+  const [modelError, setModelError] = useState<string | null>(null);
+  const interfaceGeneration = useInterfaceGeneration({
+    api: apiMountVersion > 0 ? excalidrawApiRef.current : null,
+    drawing: currentDrawing ? { id: currentDrawing.id, version: currentDrawing.version } : null,
+  });
 
   // Preparar initialData do drawing atual
   // ⚠️ IMPORTANTE: Não incluir campos que causam loops no Excalidraw
@@ -47,10 +59,33 @@ export const ExcalidrawCanvas = () => {
       });
     }
   }, [currentDrawing?.id, navigate]);
+
+  useEffect(() => {
+    let disposed = false;
+    setInterfaceModel(null);
+    setModelError(null);
+    if (!currentDrawing) return;
+
+    void requestJson<ListModelsResponse>("/api/models?purpose=interface")
+      .then(({ models }) => {
+        if (disposed) return;
+        setInterfaceModel(models[0]?.id ?? null);
+        if (models.length === 0) setModelError("No compatible interface model is available");
+      })
+      .catch((error: unknown) => {
+        if (disposed) return;
+        setModelError(error instanceof Error ? error.message : "Unable to load interface models");
+      });
+
+    return () => { disposed = true; };
+  }, [currentDrawing?.id]);
   
   // Callback quando API do Excalidraw monta
   const onExcalidrawAPIMount = useCallback((api: ExcalidrawImperativeAPI) => {
     console.log('🎯 Excalidraw API montada');
+    excalidrawApiRef.current = api;
+    setApiMountVersion((version) => version + 1);
+    setHasSelection(hasSelectedElements(api));
 
     // O desenho é carregado pelo initialData do remount, não por updateScene.
     if (currentDrawing) {
@@ -63,9 +98,15 @@ export const ExcalidrawCanvas = () => {
     if (!isArtifactEmbedLink(element.link)) return null;
     return <ArtifactEmbed element={element} />;
   }, []);
+
+  const generateInterface = useCallback(() => {
+    if (!interfaceModel || !hasSelection || interfaceGeneration.phase !== "idle") return;
+    void interfaceGeneration.generate({ model: interfaceModel }).catch(() => undefined);
+  }, [hasSelection, interfaceGeneration, interfaceModel]);
   
   // Handler de mudanças (auto-save com debounce)
   const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
+    setHasSelection(hasSelectedElementsFromAppState(appState));
     // Guard 1: Sem drawing
     if (!currentDrawing) {
       return;
@@ -159,6 +200,19 @@ export const ExcalidrawCanvas = () => {
     <div className="h-full w-full relative">
       {/* Indicador de sync simples */}
       <div className="absolute top-4 right-4 z-50">
+        <button
+          type="button"
+          className="mb-2 rounded bg-violet-600 px-3 py-1 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={!hasSelection || !interfaceModel || interfaceGeneration.phase !== "idle"}
+          onClick={generateInterface}
+        >
+          {interfaceGeneration.phase === "idle" ? "Generate interface" : "Generating interface…"}
+        </button>
+        {(interfaceGeneration.error ?? modelError) && (
+          <div role="alert" className="max-w-xs rounded bg-red-600 px-3 py-1 text-sm text-white">
+            {interfaceGeneration.error ?? modelError}
+          </div>
+        )}
         {syncStatus === "saving" && (
           <div className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded-full text-sm shadow-lg">
             <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
@@ -193,4 +247,12 @@ export const ExcalidrawCanvas = () => {
 
 function sceneFingerprint(scene: { elements: readonly unknown[]; appState: unknown; files: unknown }): string {
   return JSON.stringify(scene);
+}
+
+function hasSelectedElements(api: Pick<ExcalidrawImperativeAPI, "getAppState">): boolean {
+  return hasSelectedElementsFromAppState(api.getAppState());
+}
+
+function hasSelectedElementsFromAppState(appState: { selectedElementIds?: Record<string, boolean> }): boolean {
+  return Object.values(appState.selectedElementIds ?? {}).some(Boolean);
 }
