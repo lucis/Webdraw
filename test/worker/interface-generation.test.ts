@@ -244,8 +244,8 @@ describe("interface artifact generation route", () => {
     expect(persisted?.source_snapshot_json).not.toContain(onePixelPng);
     expect(persisted?.source_snapshot_json.toLowerCase()).not.toContain("data:image/png");
     expect(snapshot.elements[0]).toMatchObject({
-      text: "Card [redacted-png-base64]",
-      strokeColor: "prefix [redacted-data-url] suffix",
+      text: "[redacted binary data]",
+      strokeColor: "[redacted binary data]",
     });
     expect(JSON.stringify(openRouterRequest.messages)).toContain(parameterizedPng);
     expect(JSON.stringify(openRouterRequest.messages)).toContain(onePixelPng);
@@ -278,13 +278,42 @@ describe("interface artifact generation route", () => {
     expect(persisted?.source_snapshot_json).not.toContain(onePixelPng);
     expect(persisted?.source_snapshot_json).not.toContain("%69VBORw0KGgo");
     expect(snapshot.elements[0]).toMatchObject({
-      text: "Before [redacted-data-url] after",
-      strokeColor: "Before [redacted-data-url] after",
-      frameId: "[redacted-png-base64]",
+      text: "[redacted binary data]",
+      strokeColor: "[redacted binary data]",
+      frameId: "[redacted binary data]",
       backgroundColor: "Ordinary value with malformed %ZZ escape",
     });
     expect(JSON.stringify(openRouterRequest.messages)).toContain(encodedDataUrl);
     expect(JSON.stringify(openRouterRequest.messages)).toContain(mixedEncodedDataUrl);
+  });
+
+  it("replaces a whitespace-encoded PNG field wholesale without changing adjacent input sent to the model", async () => {
+    const { user, drawing } = await createAuthenticatedUser();
+    const onePixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLkEwAAAABJRU5ErkJggg==";
+    const whitespaceEncodedPng = `data:image/png;base64,%0A${[...onePixelPng].join("%0A")}`;
+    const sourceValue = `Before ${whitespaceEncodedPng}%2Eafter`;
+    const request = requestFor(drawing.id);
+    request.selection.semantic.elements[0].text = sourceValue;
+    request.selection.semantic.elements[0].strokeColor = "Ordinary %ZZ text remains exact";
+    const fetch = providerFetch();
+
+    const response = await authenticatedRequest(user.id, request, fetch);
+    const body = await response.json() as { artifact: { id: string } };
+    const persisted = await testEnv.DB.prepare(
+      "SELECT source_snapshot_json FROM artifact_versions WHERE artifact_id = ? AND version = 1",
+    ).bind(body.artifact.id).first<{ source_snapshot_json: string }>();
+    const snapshot = JSON.parse(persisted?.source_snapshot_json ?? "{}") as {
+      elements: Array<{ text?: string; strokeColor?: string }>;
+    };
+    const openRouterRequest = JSON.parse(String(fetch.mock.calls[1]?.[1]?.body));
+
+    expect(response.status).toBe(201);
+    expect(persisted?.source_snapshot_json).not.toContain("%0Ai%0AV%0AB");
+    expect(snapshot.elements[0]).toEqual(expect.objectContaining({
+      text: "[redacted binary data]",
+      strokeColor: "Ordinary %ZZ text remains exact",
+    }));
+    expect(JSON.stringify(openRouterRequest.messages)).toContain(sourceValue);
   });
 
   it("rejects fake document-closing tags in inline script text and comments", async () => {
