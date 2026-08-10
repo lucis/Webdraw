@@ -7,6 +7,7 @@ import { createDrawing } from "../../worker/db/drawings";
 import { listFolders } from "../../worker/db/folders";
 import { getArtifact, listArtifactVersions } from "../../worker/db/artifacts";
 import { SESSION_COOKIE } from "../../worker/middleware/session";
+import type { InterfaceGenerationRequest } from "../../shared/contracts/generation";
 
 const encryptionKey = btoa(String.fromCharCode(...new Uint8Array(32).fill(11)));
 const testEnv = {
@@ -56,7 +57,7 @@ async function authenticatedRequest(
   }, testEnv);
 }
 
-function requestFor(drawingId: string, drawingVersion = 1) {
+function requestFor(drawingId: string, drawingVersion = 1): InterfaceGenerationRequest {
   return {
     mode: "create",
     kind: "html",
@@ -194,6 +195,36 @@ describe("interface artifact generation route", () => {
     };
 
     const response = await authenticatedRequest(user.id, requestFor(drawing.id), providerFetch(incompleteDocument));
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: "validation_failed" } });
+  });
+
+  it("does not persist a caller-controlled PNG data URL nested in semantic bindings", async () => {
+    const { user, drawing } = await createAuthenticatedUser();
+    const nestedPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
+    const request = requestFor(drawing.id);
+    request.selection.semantic.elements[0].bindings = { image: nestedPng };
+
+    const response = await authenticatedRequest(user.id, request, providerFetch());
+    const body = await response.json() as { artifact: { id: string } };
+    const persisted = await testEnv.DB.prepare(
+      "SELECT source_snapshot_json FROM artifact_versions WHERE artifact_id = ? AND version = 1",
+    ).bind(body.artifact.id).first<{ source_snapshot_json: string }>();
+
+    expect(response.status).toBe(201);
+    expect(persisted?.source_snapshot_json).not.toContain("data:image/png");
+    expect(persisted?.source_snapshot_json).not.toContain("iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB");
+  });
+
+  it("rejects fake document-closing tags in inline script text and comments", async () => {
+    const { user, drawing } = await createAuthenticatedUser();
+    const misleadingSource = {
+      ...generatedArtifact,
+      sourceHtml: "<!doctype html><html><head><script>const closing = \"</body></html>\";</script></head><body><main>Partial<!-- </body></html> -->",
+    };
+
+    const response = await authenticatedRequest(user.id, requestFor(drawing.id), providerFetch(misleadingSource));
 
     expect(response.status).toBe(422);
     await expect(response.json()).resolves.toMatchObject({ error: { code: "validation_failed" } });

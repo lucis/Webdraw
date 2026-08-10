@@ -8,7 +8,7 @@ import { completeGenerationRun, createGenerationRun, type GenerationRun } from "
 import { getCredential } from "../db/sessions";
 import { AppError } from "../lib/errors";
 import { OpenRouterClient } from "../openrouter/client";
-import { buildInterfaceGenerationRequest, parseGeneratedHtmlArtifact, validatePngDataUrl, validateSourceHtml } from "../openrouter/interface-generation";
+import { buildInterfaceGenerationRequest, createPersistableSemanticSnapshot, parseGeneratedHtmlArtifact, validatePngDataUrl, validateSourceHtml } from "../openrouter/interface-generation";
 import { requireCompatibleModel } from "../openrouter/models";
 import type { AppBindings } from "../app";
 
@@ -45,7 +45,7 @@ export function createGenerationRoutes(options: GenerationRouteOptions = {}) {
       if (!activeVersion || activeVersion.artifact.kind !== "html" || activeVersion.artifact.sourceHtml !== input.currentSourceHtml) {
         throw new AppError(409, "version_conflict", "Artifact source has been updated");
       }
-      validateSourceHtml(input.currentSourceHtml!);
+      await validateSourceHtml(input.currentSourceHtml!);
     }
 
     const run = await createGenerationRun(context.env.DB, userId, {
@@ -80,12 +80,12 @@ export function createGenerationRoutes(options: GenerationRouteOptions = {}) {
           ...buildInterfaceGenerationRequest(input),
           signal: context.req.raw.signal,
         });
-        const artifact = parseGeneratedHtmlArtifact(completion);
+        const artifact = await parseGeneratedHtmlArtifact(completion);
         const metadata = {
           // Never store the full constructed prompt or the data URL. The reduced semantic input is enough for provenance.
           prompt: null,
           model: input.model,
-          sourceSnapshot: input.selection.semantic,
+          sourceSnapshot: createPersistableSemanticSnapshot(input.selection.semantic),
         };
         const persisted = input.mode === "create"
           ? await createArtifact(context.env.DB, userId, drawing.id, artifact, metadata)

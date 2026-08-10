@@ -82,7 +82,33 @@ export function buildInterfaceGenerationRequest(input: InterfaceGenerationReques
   };
 }
 
-export function parseGeneratedHtmlArtifact(completion: OpenRouterChatCompletion): HtmlArtifact {
+/**
+ * Keep provenance useful without retaining caller-controlled opaque payloads.
+ * In particular, bindings can carry arbitrary Excalidraw file data and must
+ * never cross the persistence boundary.
+ */
+export function createPersistableSemanticSnapshot(
+  semantic: InterfaceGenerationRequest["selection"]["semantic"],
+) {
+  return {
+    elements: semantic.elements.map((element) => ({
+      id: redactOpaqueData(element.id),
+      type: redactOpaqueData(element.type),
+      x: element.x,
+      y: element.y,
+      width: element.width,
+      height: element.height,
+      ...(element.text === undefined ? {} : { text: redactOpaqueData(element.text) }),
+      ...(element.strokeColor === undefined ? {} : { strokeColor: redactOpaqueData(element.strokeColor) }),
+      ...(element.backgroundColor === undefined ? {} : { backgroundColor: redactOpaqueData(element.backgroundColor) }),
+      ...(element.frameId === undefined ? {} : { frameId: element.frameId === null ? null : redactOpaqueData(element.frameId) }),
+      ...(element.groupIds === undefined ? {} : { groupIds: element.groupIds.map(redactOpaqueData) }),
+    })),
+    bounds: { ...semantic.bounds },
+  };
+}
+
+export async function parseGeneratedHtmlArtifact(completion: OpenRouterChatCompletion): Promise<HtmlArtifact> {
   const content = completion.choices[0]?.message.content;
   if (typeof content !== "string") {
     throw invalidModelOutput();
@@ -97,24 +123,18 @@ export function parseGeneratedHtmlArtifact(completion: OpenRouterChatCompletion)
 
   const parsed = generatedHtmlArtifactSchema.safeParse(decoded);
   if (!parsed.success) throw invalidModelOutput();
-  validateSourceHtml(parsed.data.sourceHtml);
+  await validateSourceHtml(parsed.data.sourceHtml);
   return parsed.data;
 }
 
 /** Shared by AI generation and the later manual source editor route. */
-export function validateSourceHtml(sourceHtml: string): void {
+export async function validateSourceHtml(sourceHtml: string): Promise<void> {
   if (new TextEncoder().encode(sourceHtml).byteLength > MAX_INTERFACE_SOURCE_BYTES) {
     throw new AppError(422, "validation_failed", "Generated HTML exceeds the 200000 byte limit", {
       maxBytes: MAX_INTERFACE_SOURCE_BYTES,
     });
   }
-  if (
-    !/^\s*<!doctype\s+html\s*>/i.test(sourceHtml) ||
-    !/<html\b[^>]*>/i.test(sourceHtml) ||
-    !/<body\b[^>]*>/i.test(sourceHtml) ||
-    !/<\/body\s*>/i.test(sourceHtml) ||
-    !/<\/html\s*>/i.test(sourceHtml)
-  ) {
+  if (!await hasCompleteHtmlDocument(sourceHtml)) {
     throw invalidModelOutput("Generated HTML must be a complete document");
   }
   if (/```/.test(sourceHtml)) throw invalidModelOutput("Generated HTML must not contain markdown fences");
@@ -131,4 +151,57 @@ export function validateSourceHtml(sourceHtml: string): void {
 
 function invalidModelOutput(message = "OpenRouter returned invalid HTML artifact output"): AppError {
   return new AppError(422, "validation_failed", message);
+}
+
+function redactOpaqueData(value: string): string {
+  return value
+    .replace(/data:[a-z0-9.+-]+\/[a-z0-9.+-]+;base64,[a-z0-9+/]+={0,2}/gi, "[redacted-data-url]")
+    .replace(/\b[A-Za-z0-9+/]{128,}={0,2}\b/g, "[redacted-base64]");
+}
+
+/**
+ * HTMLRewriter is the Worker-native HTML parser. Unlike a regex, its callbacks
+ * distinguish actual source end tags from text in scripts and comments.
+ */
+async function hasCompleteHtmlDocument(source: string): Promise<boolean> {
+  if (!source.trimStart().toLowerCase().startsWith("<!doctype html")) return false;
+
+  let hasHtmlOpen = false;
+  let hasBodyOpen = false;
+  let hasHtmlClose = false;
+  let hasBodyClose = false;
+  let hasHtmlDoctype = false;
+  const registerEndTag = (tagName: "html" | "body") => (tag: EndTag) => {
+    if (tag.name.toLowerCase() === tagName) {
+      if (tagName === "html") hasHtmlClose = true;
+      else hasBodyClose = true;
+    }
+  };
+
+  try {
+    const response = new HTMLRewriter()
+      .onDocument({
+        doctype(doctype) {
+          hasHtmlDoctype = doctype.name?.toLowerCase() === "html";
+        },
+      })
+      .on("html", {
+        element(element) {
+          hasHtmlOpen = true;
+          element.onEndTag(registerEndTag("html"));
+        },
+      })
+      .on("body", {
+        element(element) {
+          hasBodyOpen = true;
+          element.onEndTag(registerEndTag("body"));
+        },
+      })
+      .transform(new Response(source, { headers: { "content-type": "text/html; charset=utf-8" } }));
+    await response.arrayBuffer();
+  } catch {
+    return false;
+  }
+
+  return hasHtmlDoctype && hasHtmlOpen && hasBodyOpen && hasBodyClose && hasHtmlClose;
 }
