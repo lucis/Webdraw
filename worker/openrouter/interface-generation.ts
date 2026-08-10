@@ -56,7 +56,12 @@ export function validatePngDataUrl(value: string): void {
 
 export function buildInterfaceGenerationRequest(input: InterfaceGenerationRequest) {
   const revisionContext = input.mode === "revise"
-    ? `\nRevise the current interface source below while applying the user instruction.\nCURRENT SOURCE:\n${input.currentSourceHtml}`
+    ? [
+      "Revise the current interface source below while applying the user instruction.",
+      `Current preview dimensions: ${input.artifactDimensions!.width} by ${input.artifactDimensions!.height} scene pixels.`,
+      "The screenshot includes the current preview and any drawing annotations. Selection semantics describe only the annotations.",
+      `CURRENT SOURCE:\n${input.currentSourceHtml}`,
+    ].join("\n")
     : "";
   const userText = [
     "Create an interface that faithfully follows this drawing selection.",

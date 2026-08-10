@@ -358,6 +358,7 @@ describe("interface artifact generation route", () => {
       artifactId: createBody.artifact.id,
       expectedActiveVersion: 1,
       currentSourceHtml: createBody.version.artifact.sourceHtml,
+      artifactDimensions: { width: 320, height: 180 },
       instruction: "Make the button wider.",
     };
     const revisedArtifact = { ...generatedArtifact, title: "Checkout revised", sourceHtml: generatedArtifact.sourceHtml.replace("p-6", "p-8") };
@@ -374,5 +375,82 @@ describe("interface artifact generation route", () => {
       { version: 1, artifact: generatedArtifact },
       { version: 2, artifact: revisedArtifact },
     ]);
+  });
+
+  it("sends the current source and annotation-only semantics to OpenRouter without persisting image input", async () => {
+    const { user, drawing } = await createAuthenticatedUser();
+    const created = await authenticatedRequest(user.id, requestFor(drawing.id), providerFetch());
+    const createdBody = await created.json() as { artifact: { id: string }; version: { artifact: typeof generatedArtifact } };
+    const annotationImage = "data:image/png;base64,iVBORw0KGgo=";
+    const revision = {
+      ...requestFor(drawing.id),
+      mode: "revise" as const,
+      artifactId: createdBody.artifact.id,
+      expectedActiveVersion: 1,
+      currentSourceHtml: createdBody.version.artifact.sourceHtml,
+      artifactDimensions: { width: 640, height: 384 },
+      selection: {
+        pngDataUrl: annotationImage,
+        semantic: {
+          elements: [{
+            id: "annotation",
+            type: "text",
+            x: 10,
+            y: 400,
+            width: 180,
+            height: 24,
+            text: "Make checkout clearer",
+            bindings: { image: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB" },
+          }],
+          bounds: { x: 0, y: 0, width: 640, height: 424 },
+        },
+      },
+    };
+    const fetch = providerFetch({ ...generatedArtifact, title: "Revised" });
+
+    const response = await authenticatedRequest(user.id, revision, fetch);
+    const body = await response.json() as { artifact: { activeVersion: number; id: string }; version: { version: number } };
+    const openRouterRequest = JSON.parse(String(fetch.mock.calls[1]?.[1]?.body));
+    const persisted = await testEnv.DB.prepare(
+      "SELECT source_snapshot_json FROM artifact_versions WHERE artifact_id = ? AND version = 2",
+    ).bind(createdBody.artifact.id).first<{ source_snapshot_json: string }>();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ artifact: { id: createdBody.artifact.id, activeVersion: 1 }, version: { version: 2 } });
+    const modelText = openRouterRequest.messages[1].content[0].text as string;
+    expect(modelText).toContain(createdBody.version.artifact.sourceHtml);
+    expect(modelText).toContain("Make checkout clearer");
+    expect(openRouterRequest.messages[1].content[1].image_url.url).toBe(annotationImage);
+    expect(modelText).toContain("640 by 384");
+    expect(persisted?.source_snapshot_json).not.toContain("data:image/png");
+  });
+
+  it("does not expose or revise a foreign artifact and rejects a stale active version", async () => {
+    const { user, drawing } = await createAuthenticatedUser();
+    const created = await authenticatedRequest(user.id, requestFor(drawing.id), providerFetch());
+    const createdBody = await created.json() as { artifact: { id: string }; version: { artifact: typeof generatedArtifact } };
+    const revision = {
+      ...requestFor(drawing.id),
+      mode: "revise" as const,
+      artifactId: createdBody.artifact.id,
+      expectedActiveVersion: 1,
+      currentSourceHtml: createdBody.version.artifact.sourceHtml,
+      artifactDimensions: { width: 320, height: 180 },
+    };
+    const staleFetch = vi.fn<typeof globalThis.fetch>();
+
+    const stale = await authenticatedRequest(user.id, { ...revision, expectedActiveVersion: 2 }, staleFetch);
+    const foreign = await createAuthenticatedUser();
+    const foreignFetch = vi.fn<typeof globalThis.fetch>();
+    const foreignResponse = await authenticatedRequest(foreign.user.id, {
+      ...revision,
+      drawingId: foreign.drawing.id,
+      drawingVersion: foreign.drawing.version,
+    }, foreignFetch);
+
+    expect(stale.status).toBe(409);
+    expect(foreignResponse.status).toBe(404);
+    expect(staleFetch).not.toHaveBeenCalled();
+    expect(foreignFetch).not.toHaveBeenCalled();
   });
 });

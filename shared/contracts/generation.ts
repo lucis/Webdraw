@@ -62,10 +62,14 @@ export const interfaceGenerationRequestSchema = z.object({
   artifactId: z.string().min(1).optional(),
   expectedActiveVersion: z.number().int().positive().optional(),
   currentSourceHtml: z.string().min(1).optional(),
+  artifactDimensions: z.object({
+    width: z.number().positive(),
+    height: z.number().positive(),
+  }).optional(),
 }).superRefine((value, context) => {
   if (value.mode !== "revise") return;
 
-  for (const key of ["artifactId", "expectedActiveVersion", "currentSourceHtml"] as const) {
+  for (const key of ["artifactId", "expectedActiveVersion", "currentSourceHtml", "artifactDimensions"] as const) {
     if (value[key] === undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

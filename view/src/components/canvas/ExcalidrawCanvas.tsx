@@ -30,6 +30,7 @@ export const ExcalidrawCanvas = () => {
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const [apiMountVersion, setApiMountVersion] = useState(0);
   const [hasSelection, setHasSelection] = useState(false);
+  const [isArtifactRevisionSelection, setIsArtifactRevisionSelection] = useState(false);
   const [interfaceModel, setInterfaceModel] = useState<string | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
   const interfaceGeneration = useInterfaceGeneration({
@@ -86,6 +87,7 @@ export const ExcalidrawCanvas = () => {
     excalidrawApiRef.current = api;
     setApiMountVersion((version) => version + 1);
     setHasSelection(hasSelectedElements(api));
+    setIsArtifactRevisionSelection(hasExactlyOneSelectedArtifact(api));
 
     // O desenho é carregado pelo initialData do remount, não por updateScene.
     if (currentDrawing) {
@@ -107,6 +109,7 @@ export const ExcalidrawCanvas = () => {
   // Handler de mudanças (auto-save com debounce)
   const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
     setHasSelection(hasSelectedElementsFromAppState(appState));
+    setIsArtifactRevisionSelection(hasExactlyOneSelectedArtifactInScene(elements, appState));
     // Guard 1: Sem drawing
     if (!currentDrawing) {
       return;
@@ -206,7 +209,9 @@ export const ExcalidrawCanvas = () => {
           disabled={!hasSelection || !interfaceModel || interfaceGeneration.phase !== "idle"}
           onClick={generateInterface}
         >
-          {interfaceGeneration.phase === "idle" ? "Generate interface" : "Generating interface…"}
+          {interfaceGeneration.phase === "idle"
+            ? isArtifactRevisionSelection ? "Update interface" : "Generate interface"
+            : isArtifactRevisionSelection ? "Updating interface…" : "Generating interface…"}
         </button>
         {(interfaceGeneration.error ?? modelError) && (
           <div role="alert" className="max-w-xs rounded bg-red-600 px-3 py-1 text-sm text-white">
@@ -255,4 +260,16 @@ function hasSelectedElements(api: Pick<ExcalidrawImperativeAPI, "getAppState">):
 
 function hasSelectedElementsFromAppState(appState: { selectedElementIds?: Record<string, boolean> }): boolean {
   return Object.values(appState.selectedElementIds ?? {}).some(Boolean);
+}
+
+function hasExactlyOneSelectedArtifact(api: Pick<ExcalidrawImperativeAPI, "getAppState" | "getSceneElements">): boolean {
+  return hasExactlyOneSelectedArtifactInScene(api.getSceneElements(), api.getAppState());
+}
+
+function hasExactlyOneSelectedArtifactInScene(
+  elements: readonly { id: string; type?: string; link?: string | null }[],
+  appState: { selectedElementIds?: Record<string, boolean> },
+): boolean {
+  const selectedIds = appState.selectedElementIds ?? {};
+  return elements.filter((element) => selectedIds[element.id] && element.type === "embeddable" && isArtifactEmbedLink(element.link)).length === 1;
 }

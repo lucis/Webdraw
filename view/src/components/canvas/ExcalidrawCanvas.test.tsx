@@ -2,6 +2,7 @@ import React from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useDrawingStore } from "../../stores/drawing-store";
+import { useArtifactStore } from "../../stores/artifact-store";
 import { ExcalidrawCanvas } from "./ExcalidrawCanvas";
 
 const { requestJson, initialData, excalidrawApi, getSelectionContext, exportSelectionPng } = vi.hoisted(() => ({
@@ -76,6 +77,7 @@ afterEach(() => {
     syncStatus: "idle",
     error: null,
   });
+  useArtifactStore.setState({ artifacts: {}, initialLoadErrors: {} });
 });
 
 describe("ExcalidrawCanvas autosave", () => {
@@ -161,5 +163,29 @@ describe("ExcalidrawCanvas autosave", () => {
       ]),
     })));
     expect(excalidrawApi.scrollToContent).toHaveBeenCalled();
+  });
+
+  it("labels a selection with exactly one artifact embed as Update interface", async () => {
+    useDrawingStore.setState({ currentDrawing: drawingA, drawings: [drawingA] });
+    excalidrawApi.getAppState.mockReturnValue({ selectedElementIds: { embed: true, note: true } });
+    excalidrawApi.getSceneElements.mockReturnValue([
+      {
+        id: "embed",
+        type: "embeddable",
+        link: "webdraw://artifact/01234567-89ab-4cde-8fab-0123456789ab",
+        x: 100,
+        y: 50,
+        width: 640,
+        height: 384,
+      },
+      { id: "note", type: "text", x: 120, y: 450, width: 200, height: 24 },
+    ]);
+    requestJson.mockImplementation((path: string) => path === "/api/models?purpose=interface"
+      ? Promise.resolve({ purpose: "interface", models: [{ id: "vision-model" }] })
+      : Promise.reject(new Error(`Unexpected request: ${path}`)));
+
+    render(<ExcalidrawCanvas />);
+
+    expect(await screen.findByRole("button", { name: "Update interface" })).toBeTruthy();
   });
 });

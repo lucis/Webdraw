@@ -5,7 +5,7 @@ import type { ArtifactRecord, ArtifactVersion } from "../../../shared/contracts/
 import { calculateArtifactBounds } from "../lib/artifact-position";
 import { requestJson } from "../lib/api";
 import { exportSelectionPng, getSelectionContext } from "../lib/selection";
-import { artifactLink, type ArtifactEmbedCustomData } from "../components/artifacts/ArtifactEmbed";
+import { artifactLink, getArtifactIdFromLink, type ArtifactEmbedCustomData } from "../components/artifacts/ArtifactEmbed";
 import { useArtifactStore } from "../stores/artifact-store";
 
 type GenerationPhase = "idle" | "capturing" | "requesting" | "placing" | "error";
@@ -25,7 +25,7 @@ interface InterfaceGenerationResponse {
   version: ArtifactVersion;
 }
 
-/** Captures the live selection, creates the artifact, and appends its canvas embed. */
+/** Captures a source selection or revisions one selected artifact from its annotations. */
 export function useInterfaceGeneration({ api, drawing }: InterfaceGenerationOptions) {
   const [phase, setPhase] = useState<GenerationPhase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -38,8 +38,51 @@ export function useInterfaceGeneration({ api, drawing }: InterfaceGenerationOpti
     try {
       const selection = getSelectionContext(api);
       const pngDataUrl = await exportSelectionPng(selection, api.getFiles());
+      const selectedEmbeds = selection.elements.flatMap((element) => {
+        if (element.type !== "embeddable") return [];
+        const artifactId = getArtifactIdFromLink(element.link);
+        return artifactId ? [{ element, artifactId }] : [];
+      });
+      const revision = selectedEmbeds.length === 1 ? selectedEmbeds[0] : null;
 
       setPhase("requesting");
+      if (revision) {
+        const artifactStore = useArtifactStore.getState();
+        const loaded = artifactStore.artifacts[revision.artifactId]
+          ?? await artifactStore.loadArtifact(revision.artifactId);
+        const active = loaded.versions.find((version) => version.version === loaded.artifact.activeVersion);
+        if (!active || active.artifact.kind !== "html") {
+          throw new Error("The selected artifact has no active HTML source");
+        }
+
+        const response = await requestJson<InterfaceGenerationResponse>("/api/generations/interface", {
+          method: "POST",
+          body: JSON.stringify({
+            mode: "revise",
+            kind: "html",
+            drawingId: drawing.id,
+            drawingVersion: drawing.version,
+            model,
+            ...(instruction ? { instruction } : {}),
+            artifactId: revision.artifactId,
+            expectedActiveVersion: loaded.artifact.activeVersion,
+            currentSourceHtml: active.artifact.sourceHtml,
+            artifactDimensions: { width: revision.element.width, height: revision.element.height },
+            selection: {
+              pngDataUrl,
+              semantic: {
+                ...selection.semantic,
+                elements: selection.semantic.elements.filter((element) => element.id !== revision.element.id),
+              },
+            },
+          }),
+        });
+        useArtifactStore.getState().upsertArtifact(response.artifact, response.version);
+        useArtifactStore.getState().showCandidate(revision.artifactId, response.version.version);
+        setPhase("idle");
+        return;
+      }
+
       const response = await requestJson<InterfaceGenerationResponse>("/api/generations/interface", {
         method: "POST",
         body: JSON.stringify({

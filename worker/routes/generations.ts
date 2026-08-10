@@ -3,6 +3,7 @@ import { interfaceGenerationRequestSchema } from "../../shared/contracts/generat
 import type { ArtifactRecord, ArtifactVersion } from "../../shared/contracts/artifacts";
 import { decryptSecret } from "../auth/crypto";
 import { createArtifact, createCandidateVersion, getArtifact, listArtifactVersions } from "../db/artifacts";
+import { RepositoryError } from "../db/types";
 import { getDrawing } from "../db/drawings";
 import { completeGenerationRun, createGenerationRun, type GenerationRun } from "../db/generations";
 import { getCredential } from "../db/sessions";
@@ -89,7 +90,7 @@ export function createGenerationRoutes(options: GenerationRouteOptions = {}) {
         };
         const persisted = input.mode === "create"
           ? await createArtifact(context.env.DB, userId, drawing.id, artifact, metadata)
-          : await createCandidateVersion(context.env.DB, userId, existingArtifact!.id, artifact, metadata);
+          : await createRevisionCandidate(context.env.DB, userId, existingArtifact!.id, artifact, metadata, input.expectedActiveVersion!);
         const artifactRecord = input.mode === "create" ? persisted as ArtifactRecord : existingArtifact!;
         const version = input.mode === "create"
           ? { artifactId: artifactRecord.id, version: 1, artifact, metadata, createdAt: artifactRecord.createdAt }
@@ -114,6 +115,24 @@ export function createGenerationRoutes(options: GenerationRouteOptions = {}) {
   });
 
   return app;
+}
+
+async function createRevisionCandidate(
+  db: D1Database,
+  userId: string,
+  artifactId: string,
+  artifact: Awaited<ReturnType<typeof parseGeneratedHtmlArtifact>>,
+  metadata: Parameters<typeof createCandidateVersion>[4],
+  expectedActiveVersion: number,
+) {
+  try {
+    return await createCandidateVersion(db, userId, artifactId, artifact, metadata, expectedActiveVersion);
+  } catch (error) {
+    if (error instanceof RepositoryError && error.code === "version_conflict") {
+      throw new AppError(409, "version_conflict", "Artifact version has been updated");
+    }
+    throw error;
+  }
 }
 
 async function parseInput(request: Request) {
