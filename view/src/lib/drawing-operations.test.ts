@@ -1,54 +1,17 @@
-import { convertToExcalidrawElements } from "@excalidraw/excalidraw";
+import type { convertToExcalidrawElements as ConvertToExcalidrawElements } from "@excalidraw/excalidraw";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import type { DrawingOperation } from "../../../shared/contracts/drawing-operations";
-import { materializeOperations } from "./drawing-operations";
+import type { materializeOperations as MaterializeOperations } from "./drawing-operations";
 
-// Excalidraw's published ESM entry currently contains an extensionless
-// roughjs import that Node cannot resolve in Vitest. This behavioral double
-// mirrors the conversion/versioning/binding-repair boundary used below while
-// the production bundle continues to use Excalidraw's real exports.
-vi.mock("@excalidraw/excalidraw", () => ({
-  convertToExcalidrawElements: (skeletons: Array<Record<string, unknown>>) => skeletons.map((skeleton, index) => ({
-    strokeColor: "#1e1e1e",
-    backgroundColor: "transparent",
-    fillStyle: "solid",
-    strokeWidth: 1,
-    strokeStyle: "solid",
-    roughness: 1,
-    opacity: 100,
-    angle: 0,
-    seed: 100 + index,
-    version: 1,
-    versionNonce: 200 + index,
-    index: null,
-    isDeleted: false,
-    groupIds: [],
-    frameId: null,
-    roundness: null,
-    boundElements: [],
-    updated: 1,
-    link: null,
-    locked: false,
-    ...skeleton,
-  })),
-  newElementWith: (element: Record<string, unknown>, updates: Record<string, unknown>) => ({
-    ...element,
-    ...updates,
-    version: Number(element.version) + 1,
-    versionNonce: Number(element.versionNonce) + 1,
-    updated: Number(element.updated) + 1,
-  }),
-  restoreElements: (elements: Array<Record<string, unknown>>, _local: unknown, options: { repairBindings?: boolean }) => {
-    const ids = new Set(elements.map((element) => element.id));
-    return elements.map((element) => ({
-      ...element,
-      boundElements: options.repairBindings && Array.isArray(element.boundElements)
-        ? element.boundElements.filter((binding) => ids.has((binding as { id: string }).id))
-        : element.boundElements,
-    }));
-  },
-}));
+let convertToExcalidrawElements: typeof ConvertToExcalidrawElements;
+let materializeOperations: typeof MaterializeOperations;
+
+beforeAll(async () => {
+  installCanvasMeasurementStub();
+  ({ convertToExcalidrawElements } = await import("@excalidraw/excalidraw"));
+  ({ materializeOperations } = await import("./drawing-operations"));
+});
 
 function rectangle(id: string, x = 10): ExcalidrawElement {
   const [element] = convertToExcalidrawElements([{
@@ -106,6 +69,74 @@ describe("materializeOperations", () => {
     expect(source).toEqual(original);
   });
 
+  it.each(["line", "arrow"] as const)("keeps %s points consistent with patched geometry", (type) => {
+    const [source] = convertToExcalidrawElements([{
+      id: `${type}-selected`,
+      type,
+      x: 40,
+      y: 50,
+      width: 100,
+      height: 50,
+    }], { regenerateIds: false });
+    if (!source || (source.type !== "line" && source.type !== "arrow")) {
+      throw new Error("Unable to create linear fixture");
+    }
+    const original = structuredClone(source);
+
+    const preview = materializeOperations([source], [
+      { op: "update", id: source.id, patch: { x: 80, y: 90, width: 240, height: 120 } },
+    ]);
+
+    const updated = preview.nextElements[0];
+    if (!updated || (updated.type !== "line" && updated.type !== "arrow")) {
+      throw new Error("Expected a materialized linear element");
+    }
+    const xs = updated.points.map(([x]) => x);
+    const ys = updated.points.map(([, y]) => y);
+    expect(updated).toMatchObject({ x: 80, y: 90, width: 240, height: 120 });
+    expect(Math.max(...xs) - Math.min(...xs)).toBe(updated.width);
+    expect(Math.max(...ys) - Math.min(...ys)).toBe(updated.height);
+    expect(updated.points).not.toEqual(source.points);
+    expect(source).toEqual(original);
+  });
+
+  it("keeps text, originalText, and measured dimensions synchronized", () => {
+    const [source] = convertToExcalidrawElements([{
+      id: "text-selected",
+      type: "text",
+      x: 20,
+      y: 30,
+      text: "Short",
+      fontSize: 20,
+    }], { regenerateIds: false });
+    if (!source || source.type !== "text") throw new Error("Unable to create text fixture");
+    const original = structuredClone(source);
+    const replacement = "A substantially longer replacement label";
+
+    const preview = materializeOperations([source], [
+      { op: "update", id: source.id, patch: { text: replacement, fontSize: 32 } },
+    ]);
+
+    const updated = preview.nextElements[0];
+    if (!updated || updated.type !== "text") throw new Error("Expected a materialized text element");
+    expect(updated.text).toBe(replacement);
+    expect(updated.originalText).toBe(replacement);
+    expect(updated.fontSize).toBe(32);
+    expect(updated.width).toBeGreaterThan(source.width);
+    expect(updated.height).toBeGreaterThan(source.height);
+    expect(source).toEqual(original);
+  });
+
+  it("rejects patch fields that violate the target element type", () => {
+    const source = rectangle("selected");
+
+    expect(() => materializeOperations([source], [
+      { op: "update", id: source.id, patch: { text: "Not valid for a rectangle" } },
+    ])).toThrow(/text.*not supported.*rectangle/i);
+
+    expect(source).not.toHaveProperty("text");
+  });
+
   it("represents deletion with an Excalidraw tombstone", () => {
     const source = rectangle("selected");
 
@@ -137,3 +168,51 @@ describe("materializeOperations", () => {
     expect(preview.nextElements[0]).not.toBe(current[0]);
   });
 });
+
+function installCanvasMeasurementStub() {
+  class TestFontFace {
+    family: string;
+    status = "loaded";
+
+    constructor(family: string) {
+      this.family = family;
+    }
+
+    load() {
+      return Promise.resolve(this);
+    }
+  }
+  Object.defineProperty(globalThis, "FontFace", { configurable: true, value: TestFontFace });
+  Object.defineProperty(document, "fonts", {
+    configurable: true,
+    value: {
+      add: () => undefined,
+      check: () => true,
+      load: () => Promise.resolve([]),
+      ready: Promise.resolve(),
+    },
+  });
+
+  const getContext = function (this: HTMLCanvasElement) {
+    const context = {
+      canvas: this,
+      filter: "none",
+      font: "20px sans-serif",
+      measureText: (text: string) => ({
+        width: text.length * 10,
+        actualBoundingBoxAscent: 16,
+        actualBoundingBoxDescent: 4,
+      }),
+    };
+    return new Proxy(context, {
+      get: (target, property) => property in target
+        ? target[property as keyof typeof target]
+        : () => undefined,
+      set: (target, property, value) => {
+        (target as Record<PropertyKey, unknown>)[property] = value;
+        return true;
+      },
+    });
+  };
+  Object.defineProperty(HTMLCanvasElement.prototype, "getContext", { configurable: true, value: getContext });
+}
