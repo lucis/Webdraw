@@ -144,6 +144,52 @@ describe("drawing generation route", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("returns a valid update when its target is in the selected context", async () => {
+    const { user, drawing } = await createAuthenticatedUser();
+    const fetch = providerFetch([{ op: "update", id: "selected", patch: { x: 120, opacity: 80 } }]);
+    const request = requestFor(drawing.id);
+    request.selectedIds = ["selected"];
+    request.semantic.elements = [{ id: "selected", type: "rectangle", x: 40, y: 50, width: 80, height: 60 }];
+
+    const response = await authenticatedRequest(user.id, request, fetch);
+    const body = await response.json() as { operations: unknown[]; generation: { status: string } };
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual(expect.objectContaining({
+      operations: [{ op: "update", id: "selected", patch: { x: 120, opacity: 80 } }],
+      generation: expect.objectContaining({ status: "succeeded" }),
+    }));
+    const persisted = await testEnv.DB.prepare("SELECT version FROM drawings WHERE id = ?").bind(drawing.id).first<{ version: number }>();
+    expect(persisted).toEqual({ version: 1 });
+  });
+
+  it("normalizes provider failures without storing or returning provider, credential, or prompt details", async () => {
+    const { user, drawing } = await createAuthenticatedUser();
+    const privatePrompt = "private drawing instruction";
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify(catalogResponse), { headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: { message: `sk-or-test-only rejected ${privatePrompt}` },
+      }), { status: 500, headers: { "content-type": "application/json" } }));
+    const request = requestFor(drawing.id);
+    request.prompt = privatePrompt;
+
+    const response = await authenticatedRequest(user.id, request, fetch);
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      error: { code: "openrouter_error", message: "OpenRouter request failed" },
+    });
+    const run = await testEnv.DB.prepare(
+      "SELECT status, error_code, error_message FROM generation_runs WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+    ).bind(user.id).first<{ status: string; error_code: string; error_message: string }>();
+    expect(run).toEqual({
+      status: "failed",
+      error_code: "openrouter_error",
+      error_message: "OpenRouter request failed",
+    });
+  });
+
   it("authorizes model updates against selected IDs and records a sanitized failure", async () => {
     const { user, drawing } = await createAuthenticatedUser();
     const fetch = providerFetch([{ op: "update", id: "unselected", patch: { x: 99 } }]);
