@@ -63,7 +63,9 @@ export class OpenRouterClient {
   private readonly fetchImplementation: typeof globalThis.fetch;
 
   constructor(private readonly options: OpenRouterClientOptions) {
-    this.fetchImplementation = options.fetch ?? globalThis.fetch;
+    // Workerd's native fetch checks its receiver. Keep the global method bound
+    // when no test/custom implementation is supplied.
+    this.fetchImplementation = options.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
   async listModels(options: { signal?: AbortSignal } = {}): Promise<Model[]> {
@@ -110,6 +112,10 @@ export class OpenRouterClient {
       // to distinguish local runtime/network failures from provider responses.
       console.error("OpenRouter request transport failure", {
         name: error instanceof Error ? error.name : "unknown",
+        message: error instanceof Error ? error.message : undefined,
+        cause: error instanceof Error && error.cause instanceof Error
+          ? { name: error.cause.name, message: error.cause.message }
+          : undefined,
       });
       throw new AppError(502, "openrouter_error", "OpenRouter request failed");
     }
