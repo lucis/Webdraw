@@ -5,8 +5,6 @@ import {
   type ListModelsResponse,
   type ModelPurpose,
 } from "../../shared/contracts/models";
-import { decryptSecret } from "../auth/crypto";
-import { getCredential } from "../db/sessions";
 import { AppError } from "../lib/errors";
 import { OpenRouterClient } from "../openrouter/client";
 import { filterModelsForPurpose } from "../openrouter/models";
@@ -47,25 +45,7 @@ async function getModelsForPurpose(
     if (parsed.success && parsed.data.purpose === purpose) return parsed.data;
   }
 
-  const user = context.get("user");
-  const credential = await getCredential(context.env.DB, user.id);
-  if (!credential) {
-    throw new AppError(401, "unauthorized", "OpenRouter credential unavailable");
-  }
-
-  let apiKey: string;
-  try {
-    apiKey = await decryptSecret({
-      ciphertext: credential.ciphertext,
-      iv: credential.iv,
-      formatVersion: credential.formatVersion as 1,
-    }, context.env.AUTH_ENCRYPTION_KEY);
-  } catch {
-    throw new AppError(401, "unauthorized", "OpenRouter credential unavailable");
-  }
-
   const client = new OpenRouterClient({
-    apiKey,
     appOrigin: context.env.APP_ORIGIN,
     fetch: fetchImplementation,
   });

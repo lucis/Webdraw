@@ -44,7 +44,7 @@ const providerErrorSchema = z.object({
 }).passthrough();
 
 export interface OpenRouterClientOptions {
-  apiKey: string;
+  apiKey?: string;
   appOrigin: string;
   fetch?: typeof globalThis.fetch;
 }
@@ -99,7 +99,7 @@ export class OpenRouterClient {
       response = await this.fetchImplementation(`${OPENROUTER_API_ORIGIN}${path}`, {
         ...init,
         headers: {
-          Authorization: `Bearer ${this.options.apiKey}`,
+          ...(this.options.apiKey ? { Authorization: `Bearer ${this.options.apiKey}` } : {}),
           "HTTP-Referer": this.options.appOrigin,
           "X-OpenRouter-Title": "Webdraw",
           "content-type": "application/json",

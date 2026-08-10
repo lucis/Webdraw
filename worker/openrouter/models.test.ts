@@ -93,6 +93,19 @@ describe("OpenRouter model capabilities", () => {
     }));
   });
 
+  it("lists the public catalog without sending an OpenRouter credential", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(JSON.stringify(catalogResponse), {
+      headers: { "content-type": "application/json" },
+    }));
+    const client = new OpenRouterClient({ appOrigin: "https://webdraw.test", fetch });
+
+    await client.listModels();
+
+    expect(fetch).toHaveBeenCalledWith("https://openrouter.ai/api/v1/models", expect.objectContaining({
+      headers: expect.not.objectContaining({ Authorization: expect.anything() }),
+    }));
+  });
+
   it("normalizes provider failures without returning credentials or prompt content", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(JSON.stringify({
       error: { message: "sk-or-server-only rejected private prompt: confidential canvas" },
