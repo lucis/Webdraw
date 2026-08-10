@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { activateArtifactVersion, createCandidateVersion, getArtifact, listArtifactVersions } from "../db/artifacts";
+import { RepositoryError } from "../db/types";
 import { AppError } from "../lib/errors";
 import { validateSourceHtml } from "../openrouter/interface-generation";
 import type { AppBindings } from "../app";
@@ -45,11 +46,11 @@ export function createArtifactRoutes() {
 
     // Manual saves deliberately share the generation path's complete-document and resource policy.
     await validateSourceHtml(input.sourceHtml);
-    const version = await createCandidateVersion(context.env.DB, userId, artifactId, {
+    const version = await withArtifactConflictMessage(() => createCandidateVersion(context.env.DB, userId, artifactId, {
       kind: "html",
       title: input.title,
       sourceHtml: input.sourceHtml,
-    }, { prompt: null, model: null, sourceSnapshot: null }, input.expectedActiveVersion);
+    }, { prompt: null, model: null, sourceSnapshot: null }, input.expectedActiveVersion));
     return context.json({ artifact, version }, 201);
   });
 
@@ -61,13 +62,13 @@ export function createArtifactRoutes() {
     }
 
     const input = await parseRequest(context.req.raw, activationRequestSchema);
-    const artifact = await activateArtifactVersion(
+    const artifact = await withArtifactConflictMessage(() => activateArtifactVersion(
       context.env.DB,
       context.get("user").id,
       artifactId,
       input.expectedActiveVersion,
       version,
-    );
+    ));
     return context.json({ artifact });
   });
 
@@ -84,4 +85,15 @@ async function parseRequest<TSchema extends z.ZodType>(request: Request, schema:
   const parsed = schema.safeParse(body);
   if (!parsed.success) throw new AppError(400, "validation_failed", "Invalid request", parsed.error.flatten());
   return parsed.data;
+}
+
+async function withArtifactConflictMessage<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof RepositoryError && error.code === "version_conflict") {
+      throw new AppError(409, "version_conflict", "Resource has been updated");
+    }
+    throw error;
+  }
 }

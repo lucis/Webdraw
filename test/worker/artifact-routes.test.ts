@@ -118,6 +118,9 @@ describe("artifact editing routes", () => {
       body: JSON.stringify({ expectedActiveVersion: 2 }),
     });
     expect(staleActivation.status).toBe(409);
+    await expect(staleActivation.json()).resolves.toEqual({
+      error: { code: "version_conflict", message: "Resource has been updated" },
+    });
 
     const applied = await authenticatedRequest(user.id, `/api/artifacts/${artifact.id}/activate/2`, {
       method: "POST",
