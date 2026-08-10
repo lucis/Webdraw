@@ -1,8 +1,7 @@
-import tailwindBrowserRuntime from "../vendor/tailwind-browser.js?raw";
-
 export const ARTIFACT_SANDBOX = "allow-scripts";
 
-const artifactContentSecurityPolicy = "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none";
+const tailwindBrowserCdn = "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.3";
+const artifactContentSecurityPolicy = "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none";
 
 const artifactErrorBridge = `
 (() => {
@@ -35,8 +34,8 @@ export function buildArtifactDocument(sourceHtml: string): string {
   csp.content = artifactContentSecurityPolicy;
 
   const tailwindRuntime = document.createElement("script");
-  tailwindRuntime.id = "webdraw-tailwind-runtime";
-  tailwindRuntime.textContent = tailwindBrowserRuntime;
+  tailwindRuntime.id = "webdraw-tailwind-cdn";
+  tailwindRuntime.src = tailwindBrowserCdn;
 
   const errorBridge = document.createElement("script");
   errorBridge.id = "webdraw-artifact-error-bridge";

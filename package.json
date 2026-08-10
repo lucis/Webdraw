@@ -14,7 +14,7 @@
     "test:worker": "vitest run --config vitest.worker.config.ts",
     "cf:typegen": "wrangler types",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "postinstall": "node scripts/vendor-tailwind-browser.mjs && patch-package"
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.0",
@@ -43,7 +43,6 @@
     "@cloudflare/vite-plugin": "^1.13.4",
     "@cloudflare/vitest-pool-workers": "^0.20.3",
     "@eslint/js": "^9.39.4",
-    "@tailwindcss/browser": "4.3.3",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.3",
     "@types/react": "^19.0.8",
