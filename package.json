@@ -61,7 +61,10 @@
     "wrangler": "^4.28.0"
   },
   "overrides": {
-    "workerd": "1.20260809.1"
+    "workerd": "1.20260810.1",
+    "miniflare": {
+      "workerd": "1.20260810.1"
+    }
   },
   "engines": {
     "node": ">=22.0.0"
