@@ -52,12 +52,28 @@ export const selectionContextSchema = z.object({
  * reserved persistence boundary, not an implemented generation target.
  */
 export const interfaceGenerationRequestSchema = z.object({
+  mode: z.enum(["create", "revise"]).default("create"),
   kind: z.literal("html"),
   drawingId: z.string(),
   drawingVersion: z.number().int().positive(),
   model: z.string().min(1),
   instruction: z.string().optional(),
   selection: selectionContextSchema,
+  artifactId: z.string().min(1).optional(),
+  expectedActiveVersion: z.number().int().positive().optional(),
+  currentSourceHtml: z.string().min(1).optional(),
+}).superRefine((value, context) => {
+  if (value.mode !== "revise") return;
+
+  for (const key of ["artifactId", "expectedActiveVersion", "currentSourceHtml"] as const) {
+    if (value[key] === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: `${key} is required for revisions`,
+      });
+    }
+  }
 });
 
 /** Generation is deliberately constrained to the implemented HTML variant. */
