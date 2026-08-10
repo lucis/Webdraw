@@ -90,22 +90,23 @@ export function buildInterfaceGenerationRequest(input: InterfaceGenerationReques
 export function createPersistableSemanticSnapshot(
   semantic: InterfaceGenerationRequest["selection"]["semantic"],
 ) {
-  return {
+  const snapshot = {
     elements: semantic.elements.map((element) => ({
-      id: redactOpaqueData(element.id),
-      type: redactOpaqueData(element.type),
+      id: element.id,
+      type: element.type,
       x: element.x,
       y: element.y,
       width: element.width,
       height: element.height,
-      ...(element.text === undefined ? {} : { text: redactOpaqueData(element.text) }),
-      ...(element.strokeColor === undefined ? {} : { strokeColor: redactOpaqueData(element.strokeColor) }),
-      ...(element.backgroundColor === undefined ? {} : { backgroundColor: redactOpaqueData(element.backgroundColor) }),
-      ...(element.frameId === undefined ? {} : { frameId: element.frameId === null ? null : redactOpaqueData(element.frameId) }),
-      ...(element.groupIds === undefined ? {} : { groupIds: element.groupIds.map(redactOpaqueData) }),
+      ...(element.text === undefined ? {} : { text: element.text }),
+      ...(element.strokeColor === undefined ? {} : { strokeColor: element.strokeColor }),
+      ...(element.backgroundColor === undefined ? {} : { backgroundColor: element.backgroundColor }),
+      ...(element.frameId === undefined ? {} : { frameId: element.frameId }),
+      ...(element.groupIds === undefined ? {} : { groupIds: element.groupIds }),
     })),
     bounds: { ...semantic.bounds },
   };
+  return sanitizePersistedSnapshot(snapshot) as typeof snapshot;
 }
 
 export async function parseGeneratedHtmlArtifact(completion: OpenRouterChatCompletion): Promise<HtmlArtifact> {
@@ -155,8 +156,20 @@ function invalidModelOutput(message = "OpenRouter returned invalid HTML artifact
 
 function redactOpaqueData(value: string): string {
   return value
-    .replace(/data:[a-z0-9.+-]+\/[a-z0-9.+-]+;base64,[a-z0-9+/]+={0,2}/gi, "[redacted-data-url]")
-    .replace(/\b[A-Za-z0-9+/]{128,}={0,2}\b/g, "[redacted-base64]");
+    .replace(/data:[^,\s"'<>]*;base64,[A-Za-z0-9+/_-]+={0,2}/gi, "[redacted-data-url]")
+    .replace(/iVBORw0KGgo[A-Za-z0-9+/]*={0,2}/g, "[redacted-png-base64]");
+}
+
+/** Applies the data-URL rule at every persisted string boundary without mutating request input. */
+function sanitizePersistedSnapshot(value: unknown): unknown {
+  if (typeof value === "string") return redactOpaqueData(value);
+  if (Array.isArray(value)) return value.map(sanitizePersistedSnapshot);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nestedValue]) => [key, sanitizePersistedSnapshot(nestedValue)]),
+    );
+  }
+  return value;
 }
 
 /**

@@ -217,6 +217,40 @@ describe("interface artifact generation route", () => {
     expect(persisted?.source_snapshot_json).not.toContain("iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB");
   });
 
+  it("redacts short and parameterized PNG data URLs from every persisted semantic string without changing the model input", async () => {
+    const { user, drawing } = await createAuthenticatedUser();
+    const onePixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLkEwAAAABJRU5ErkJggg==";
+    const parameterizedPng = `DATA:image/png;charset=UTF-8;base64,${onePixelPng}`;
+    const request = requestFor(drawing.id);
+    const element = request.selection.semantic.elements[0];
+    element.text = `Card ${onePixelPng}`;
+    element.strokeColor = `prefix ${parameterizedPng} suffix`;
+    element.backgroundColor = `data:image/png;name=one-pixel;base64,${onePixelPng}`;
+    element.frameId = `frame-${parameterizedPng}`;
+    element.groupIds = [`group-${parameterizedPng}`];
+    const fetch = providerFetch();
+
+    const response = await authenticatedRequest(user.id, request, fetch);
+    const body = await response.json() as { artifact: { id: string } };
+    const persisted = await testEnv.DB.prepare(
+      "SELECT source_snapshot_json FROM artifact_versions WHERE artifact_id = ? AND version = 1",
+    ).bind(body.artifact.id).first<{ source_snapshot_json: string }>();
+    const snapshot = JSON.parse(persisted?.source_snapshot_json ?? "{}") as {
+      elements: Array<{ text?: string; strokeColor?: string }>;
+    };
+    const openRouterRequest = JSON.parse(String(fetch.mock.calls[1]?.[1]?.body));
+
+    expect(response.status).toBe(201);
+    expect(persisted?.source_snapshot_json).not.toContain(onePixelPng);
+    expect(persisted?.source_snapshot_json.toLowerCase()).not.toContain("data:image/png");
+    expect(snapshot.elements[0]).toMatchObject({
+      text: "Card [redacted-png-base64]",
+      strokeColor: "prefix [redacted-data-url] suffix",
+    });
+    expect(JSON.stringify(openRouterRequest.messages)).toContain(parameterizedPng);
+    expect(JSON.stringify(openRouterRequest.messages)).toContain(onePixelPng);
+  });
+
   it("rejects fake document-closing tags in inline script text and comments", async () => {
     const { user, drawing } = await createAuthenticatedUser();
     const misleadingSource = {
