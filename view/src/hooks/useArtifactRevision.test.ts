@@ -113,7 +113,7 @@ describe("useInterfaceGeneration artifact revisions", () => {
           pngDataUrl: "data:image/png;base64,YW5ub3RhdGVk",
           semantic: {
             elements: [annotation],
-            bounds: { x: 100, y: 50, width: 640, height: 440 },
+            bounds: { x: 120, y: 460, width: 240, height: 30 },
           },
         },
       }),
@@ -126,5 +126,76 @@ describe("useInterfaceGeneration artifact revisions", () => {
       versions: [activeVersion, candidateVersion],
       candidateVersion: 2,
     });
+  });
+
+  it("uses the empty semantic-selection bounds when only the artifact is selected", async () => {
+    const api = {
+      getFiles: vi.fn(() => ({})),
+      getSceneElements: vi.fn(() => [embed]),
+      updateScene: vi.fn(),
+      scrollToContent: vi.fn(),
+    };
+    getSelectionContext.mockReturnValue({
+      elements: [embed],
+      semantic: {
+        elements: [embed],
+        bounds: { x: 100, y: 50, width: 640, height: 384 },
+      },
+    });
+    exportSelectionPng.mockResolvedValue("data:image/png;base64,YXJ0aWZhY3Q=");
+    useArtifactStore.setState({
+      artifacts: {
+        [artifact.id]: { artifact, versions: [activeVersion], candidateVersion: null, previewError: null },
+      },
+    });
+    vi.mocked(requestJson).mockResolvedValue({ artifact, version: candidateVersion });
+
+    const { result } = renderHook(() => useInterfaceGeneration({
+      api: api as never,
+      drawing: { id: "drawing-123", version: 7 },
+    }));
+
+    await act(() => result.current.generate({ model: "vision-model" }));
+
+    const request = JSON.parse(String(vi.mocked(requestJson).mock.calls[0]?.[1]?.body));
+    expect(request.selection.semantic).toEqual({
+      elements: [],
+      bounds: { x: 0, y: 0, width: 1, height: 1 },
+    });
+    expect(api.updateScene).not.toHaveBeenCalled();
+  });
+
+  it("keeps a one-dimensional annotation within the positive transport bounds", async () => {
+    const verticalAnnotation = { ...annotation, id: "vertical-note", x: 400, y: 80, width: 0, height: 120 };
+    const api = {
+      getFiles: vi.fn(() => ({})),
+      getSceneElements: vi.fn(() => [embed, verticalAnnotation]),
+      updateScene: vi.fn(),
+      scrollToContent: vi.fn(),
+    };
+    getSelectionContext.mockReturnValue({
+      elements: [embed, verticalAnnotation],
+      semantic: {
+        elements: [embed, verticalAnnotation],
+        bounds: { x: 100, y: 50, width: 640, height: 384 },
+      },
+    });
+    exportSelectionPng.mockResolvedValue("data:image/png;base64,dGhpbm5vdGU=");
+    useArtifactStore.setState({
+      artifacts: {
+        [artifact.id]: { artifact, versions: [activeVersion], candidateVersion: null, previewError: null },
+      },
+    });
+    vi.mocked(requestJson).mockResolvedValue({ artifact, version: candidateVersion });
+
+    const { result } = renderHook(() => useInterfaceGeneration({
+      api: api as never,
+      drawing: { id: "drawing-123", version: 7 },
+    }));
+
+    await act(() => result.current.generate({ model: "vision-model" }));
+
+    const request = JSON.parse(String(vi.mocked(requestJson).mock.calls[0]?.[1]?.body));
+    expect(request.selection.semantic.bounds).toEqual({ x: 400, y: 80, width: 1, height: 120 });
   });
 });

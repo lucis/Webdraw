@@ -2,6 +2,7 @@ import { restoreElements } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { useCallback, useState } from "react";
 import type { ArtifactRecord, ArtifactVersion } from "../../../shared/contracts/artifacts";
+import type { SemanticSelectionElement, SelectionBounds } from "../../../shared/contracts/generation";
 import { calculateArtifactBounds } from "../lib/artifact-position";
 import { requestJson } from "../lib/api";
 import { exportSelectionPng, getSelectionContext } from "../lib/selection";
@@ -70,10 +71,7 @@ export function useInterfaceGeneration({ api, drawing }: InterfaceGenerationOpti
             artifactDimensions: { width: revision.element.width, height: revision.element.height },
             selection: {
               pngDataUrl,
-              semantic: {
-                ...selection.semantic,
-                elements: selection.semantic.elements.filter((element) => element.id !== revision.element.id),
-              },
+              semantic: annotationSemanticSelection(selection.semantic.elements, revision.element.id),
             },
           }),
         });
@@ -133,4 +131,22 @@ export function useInterfaceGeneration({ api, drawing }: InterfaceGenerationOpti
   }, [api, drawing]);
 
   return { phase, error, generate };
+}
+
+function annotationSemanticSelection(
+  elements: readonly SemanticSelectionElement[],
+  artifactEmbedId: string,
+): { elements: SemanticSelectionElement[]; bounds: SelectionBounds } {
+  const annotations = elements.filter((element) => element.id !== artifactEmbedId);
+  return { elements: annotations, bounds: semanticBounds(annotations) };
+}
+
+function semanticBounds(elements: readonly SemanticSelectionElement[]): SelectionBounds {
+  if (elements.length === 0) return { x: 0, y: 0, width: 1, height: 1 };
+
+  const left = Math.min(...elements.map((element) => Math.min(element.x, element.x + element.width)));
+  const top = Math.min(...elements.map((element) => Math.min(element.y, element.y + element.height)));
+  const right = Math.max(...elements.map((element) => Math.max(element.x, element.x + element.width)));
+  const bottom = Math.max(...elements.map((element) => Math.max(element.y, element.y + element.height)));
+  return { x: left, y: top, width: Math.max(right - left, 1), height: Math.max(bottom - top, 1) };
 }
