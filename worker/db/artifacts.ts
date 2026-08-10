@@ -83,6 +83,7 @@ export async function createCandidateVersion(
   artifactId: string,
   artifact: Artifact,
   metadata: ArtifactVersionMetadata,
+  expectedActiveVersion?: number,
 ): Promise<ArtifactVersion> {
   const now = Date.now();
   const version = await db
@@ -99,6 +100,7 @@ export async function createCandidateVersion(
          ?, ?, ?, ?, ?
        FROM artifacts
        WHERE artifacts.id = ? AND artifacts.user_id = ? AND artifacts.kind = ?
+         AND (? IS NULL OR artifacts.active_version = ?)
        RETURNING artifact_id, version, payload_json, prompt, model, source_snapshot_json, created_at`,
     )
     .bind(
@@ -110,10 +112,19 @@ export async function createCandidateVersion(
       artifactId,
       userId,
       artifact.kind,
+      expectedActiveVersion ?? null,
+      expectedActiveVersion ?? null,
     )
     .first<ArtifactVersionDatabaseRow>();
 
   if (!version) {
+    const owned = await db
+      .prepare("SELECT active_version FROM artifacts WHERE id = ? AND user_id = ?")
+      .bind(artifactId, userId)
+      .first<{ active_version: number }>();
+    if (owned && expectedActiveVersion !== undefined && owned.active_version !== expectedActiveVersion) {
+      throw new RepositoryError("version_conflict");
+    }
     throw new RepositoryError("not_found");
   }
 
