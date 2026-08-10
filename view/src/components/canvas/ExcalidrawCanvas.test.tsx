@@ -57,7 +57,45 @@ const drawingA = {
 
 const drawingB = { ...drawingA, id: "drawing-b", name: "B", version: 4 };
 
+const interfaceModels = [
+  {
+    id: "vision-a",
+    name: "Vision A",
+    inputModalities: ["image", "text"],
+    supportedParameters: [],
+    contextLength: 128_000,
+    pricing: null,
+  },
+  {
+    id: "vision-b",
+    name: "Vision B",
+    inputModalities: ["image", "text"],
+    supportedParameters: [],
+    contextLength: 128_000,
+    pricing: null,
+  },
+];
+
+const generatedInterface = {
+  artifact: {
+    id: "01234567-89ab-4cde-8fab-0123456789ab",
+    drawingId: drawingA.id,
+    kind: "html",
+    activeVersion: 1,
+    createdAt: 1,
+    updatedAt: 1,
+  },
+  version: {
+    artifactId: "01234567-89ab-4cde-8fab-0123456789ab",
+    version: 1,
+    artifact: { kind: "html", title: "Preview", sourceHtml: "<!doctype html><html><body>Preview</body></html>" },
+    metadata: { prompt: null, model: "vision-a", sourceSnapshot: null },
+    createdAt: 1,
+  },
+};
+
 beforeEach(() => {
+  sessionStorage.clear();
   requestJson.mockResolvedValue({ purpose: "interface", models: [] });
 });
 
@@ -66,6 +104,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   requestJson.mockReset();
+  sessionStorage.clear();
   excalidrawApi.getAppState.mockReturnValue({ selectedElementIds: { source: true } });
   excalidrawApi.updateScene.mockReset();
   excalidrawApi.scrollToContent.mockReset();
@@ -81,6 +120,61 @@ afterEach(() => {
 });
 
 describe("ExcalidrawCanvas autosave", () => {
+  it("renders compatible interface models, defaults to the first, and submits a changed choice", async () => {
+    useDrawingStore.setState({ currentDrawing: drawingA, drawings: [drawingA] });
+    getSelectionContext.mockReturnValue({
+      elements: [{ id: "source", type: "rectangle", x: 100, y: 50, width: 500, height: 300 }],
+      semantic: {
+        elements: [{ id: "source", type: "rectangle", x: 100, y: 50, width: 500, height: 300 }],
+        bounds: { x: 100, y: 50, width: 500, height: 300 },
+      },
+    });
+    exportSelectionPng.mockResolvedValue("data:image/png;base64,cG5n");
+    requestJson.mockImplementation((path: string) => {
+      if (path === "/api/models?purpose=interface") {
+        return Promise.resolve({ purpose: "interface", models: interfaceModels });
+      }
+      if (path === "/api/generations/interface") return Promise.resolve(generatedInterface);
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    render(<ExcalidrawCanvas />);
+
+    const selector = await screen.findByLabelText("Interface model");
+    expect((selector as HTMLSelectElement).value).toBe("vision-a");
+    expect(screen.getByRole("option", { name: "Vision A (vision-a)" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Vision B (vision-b)" })).toBeTruthy();
+
+    fireEvent.change(selector, { target: { value: "vision-b" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate interface" }));
+
+    await waitFor(() => expect(requestJson).toHaveBeenCalledWith(
+      "/api/generations/interface",
+      expect.objectContaining({ body: expect.stringContaining('"model":"vision-b"') }),
+    ));
+    expect(sessionStorage.getItem("webdraw.interface-model")).toBe("vision-b");
+  });
+
+  it("restores a persisted interface model when it is in the compatible catalog", async () => {
+    sessionStorage.setItem("webdraw.interface-model", "vision-b");
+    useDrawingStore.setState({ currentDrawing: drawingA, drawings: [drawingA] });
+    requestJson.mockResolvedValue({ purpose: "interface", models: interfaceModels });
+
+    render(<ExcalidrawCanvas />);
+
+    expect((await screen.findByLabelText("Interface model") as HTMLSelectElement).value).toBe("vision-b");
+  });
+
+  it("falls back to the first compatible model when the persisted model is stale", async () => {
+    sessionStorage.setItem("webdraw.interface-model", "removed-model");
+    useDrawingStore.setState({ currentDrawing: drawingA, drawings: [drawingA] });
+    requestJson.mockResolvedValue({ purpose: "interface", models: interfaceModels });
+
+    render(<ExcalidrawCanvas />);
+
+    expect((await screen.findByLabelText("Interface model") as HTMLSelectElement).value).toBe("vision-a");
+  });
+
   it("rehydrates persisted collaborators as a Map before opening a drawing", () => {
     useDrawingStore.setState({
       currentDrawing: {

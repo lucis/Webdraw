@@ -31,6 +31,7 @@ export const ExcalidrawCanvas = () => {
   const [apiMountVersion, setApiMountVersion] = useState(0);
   const [hasSelection, setHasSelection] = useState(false);
   const [isArtifactRevisionSelection, setIsArtifactRevisionSelection] = useState(false);
+  const [interfaceModels, setInterfaceModels] = useState<ListModelsResponse["models"]>([]);
   const [interfaceModel, setInterfaceModel] = useState<string | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
   const interfaceGeneration = useInterfaceGeneration({
@@ -63,6 +64,7 @@ export const ExcalidrawCanvas = () => {
 
   useEffect(() => {
     let disposed = false;
+    setInterfaceModels([]);
     setInterfaceModel(null);
     setModelError(null);
     if (!currentDrawing) return;
@@ -70,7 +72,12 @@ export const ExcalidrawCanvas = () => {
     void requestJson<ListModelsResponse>("/api/models?purpose=interface")
       .then(({ models }) => {
         if (disposed) return;
-        setInterfaceModel(models[0]?.id ?? null);
+        const persistedModel = sessionStorage.getItem("webdraw.interface-model");
+        const selectedModel = models.some((model) => model.id === persistedModel)
+          ? persistedModel
+          : models[0]?.id ?? null;
+        setInterfaceModels(models);
+        setInterfaceModel(selectedModel);
         if (models.length === 0) setModelError("No compatible interface model is available");
       })
       .catch((error: unknown) => {
@@ -203,6 +210,23 @@ export const ExcalidrawCanvas = () => {
     <div className="h-full w-full relative">
       {/* Indicador de sync simples */}
       <div className="absolute top-4 right-4 z-50">
+        <label className="sr-only" htmlFor="interface-model">Interface model</label>
+        <select
+          id="interface-model"
+          aria-label="Interface model"
+          className="mb-2 block w-full rounded bg-white px-2 py-1 text-sm text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+          value={interfaceModel ?? ""}
+          disabled={!interfaceModel || interfaceGeneration.phase !== "idle"}
+          onChange={(event) => {
+            const model = event.target.value;
+            setInterfaceModel(model);
+            sessionStorage.setItem("webdraw.interface-model", model);
+          }}
+        >
+          {interfaceModels.map((model) => (
+            <option key={model.id} value={model.id}>{`${model.name} (${model.id})`}</option>
+          ))}
+        </select>
         <button
           type="button"
           className="mb-2 rounded bg-violet-600 px-3 py-1 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
